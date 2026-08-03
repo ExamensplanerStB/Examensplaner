@@ -13,9 +13,18 @@
 
 ## Features
 
-| ID | Feature | Status | Spec | Created |
-|----|---------|--------|------|---------|
+| ID | Feature | Priority | Dependencies | Status | Spec | Created |
+|----|---------|----------|---------------|--------|------|---------|
+| PROJ-1 | Supabase-Infrastruktur-Setup — Projekt-Setup, Env-Variablen, DB-Schema-Grundgerüst, Auth (E-Mail+Passwort), RLS | P0 | None | Roadmap | — | 2026-07-28 |
+| PROJ-2 | Zentraler Themenkatalog — fachbezogene Themen, Dropdown + "Themen verwalten"-Modal, von allen Hubs referenziert | P0 | PROJ-1 | Roadmap | — | 2026-07-28 |
+| PROJ-3 | Karteikarten-Hub — Typ Theorie/Klausurtechnik, Bloom-Stufen 1–6, Spaced Repetition (1/3/9/27/81 Tage), verborgene Fehlernotizen | P0 | PROJ-1, PROJ-2 | Roadmap | — | 2026-07-28 |
+| PROJ-4 | Übungsaufgaben-Hub — Zwei-Dropdown-Bewertung (Fachlich/Klausurtechnik), adaptive Wiederholungslogik, getrennte Fehleranalyse | P0 | PROJ-1, PROJ-2 | Roadmap | — | 2026-07-28 |
+| PROJ-5 | Probeklausuren-Hub — Drei-Stufen-Nacharbeitsmodell (fachlich, analytisch, Nachschreiben nach 75 Tagen) | P0 | PROJ-1, PROJ-2 | Roadmap | — | 2026-07-28 |
+| PROJ-6 | Todo-Liste — Aufgaben/Fristen, ganztägig/Zeitslot, kalenderverzahnt | P0 | PROJ-1 | Roadmap | — | 2026-07-28 |
+| PROJ-7 | Wiederholungsplan — hub-übergreifende Aggregation fälliger/geplanter Wiederholungen, Filter, Ampelfarben | P0 | PROJ-3, PROJ-4, PROJ-5 | Roadmap | — | 2026-07-28 |
+| PROJ-8 | Kompetenzanalyse — 3-Ebenen-Drilldown, gewichtete Berechnung (10/20/30/40%), Fehlermuster-Handlungsempfehlungen. ⚠ Berechnungsspezifikation vor Spec final klären (Konzept weicht von Prototyp ab) | P0 | PROJ-3, PROJ-4, PROJ-5 | Roadmap | — | 2026-07-28 |
+| PROJ-9 | Dashboard — Zeitstrahl/Countdown, Wochenkalender, Todos, fällige Wdh., Kompetenz-Mini-Übersicht, Klausur-Zähler, Top-3-Schwachstellen | P0 | PROJ-6, PROJ-7, PROJ-8 | Roadmap | — | 2026-07-28 |
 
 <!-- Add features above this line -->
 
-## Next Available ID: PROJ-1
+## Next Available ID: PROJ-10

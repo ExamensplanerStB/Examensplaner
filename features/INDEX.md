@@ -15,7 +15,7 @@
 
 | ID | Feature | Priority | Dependencies | Status | Spec | Created |
 |----|---------|----------|---------------|--------|------|---------|
-| PROJ-1 | Supabase-Infrastruktur-Setup — Projekt-Setup, Env-Variablen, DB-Schema-Grundgerüst, Auth (E-Mail+Passwort), RLS | P0 | None | Roadmap | — | 2026-07-28 |
+| PROJ-1 | Supabase-Infrastruktur-Setup — Projekt-Setup, Env-Variablen, DB-Schema-Grundgerüst, Auth (E-Mail+Passwort), RLS | P0 | None | Planned | [Spec](PROJ-1-supabase-infrastruktur-setup.md) | 2026-07-28 |
 | PROJ-2 | Zentraler Themenkatalog — fachbezogene Themen, Dropdown + "Themen verwalten"-Modal, von allen Hubs referenziert | P0 | PROJ-1 | Roadmap | — | 2026-07-28 |
 | PROJ-3 | Karteikarten-Hub — Typ Theorie/Klausurtechnik, Bloom-Stufen 1–6, Spaced Repetition (1/3/9/27/81 Tage), verborgene Fehlernotizen | P0 | PROJ-1, PROJ-2 | Roadmap | — | 2026-07-28 |
 | PROJ-4 | Übungsaufgaben-Hub — Zwei-Dropdown-Bewertung (Fachlich/Klausurtechnik), adaptive Wiederholungslogik, getrennte Fehleranalyse | P0 | PROJ-1, PROJ-2 | Roadmap | — | 2026-07-28 |

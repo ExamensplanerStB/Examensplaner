@@ -1,8 +1,8 @@
 # PROJ-1: Supabase-Infrastruktur-Setup
 
-## Status: Planned
+## Status: Architected
 **Created:** 2026-08-03
-**Last Updated:** 2026-08-03
+**Last Updated:** 2026-08-04
 
 ## Dependencies
 - None
@@ -72,12 +72,67 @@
 <!-- Added by /architecture -->
 | Decision | Rationale | Date |
 |----------|-----------|------|
+| `@supabase/ssr` zusätzlich zu `@supabase/supabase-js` installieren | Standard-Empfehlung von Supabase für Next.js App Router; erlaubt sicheren Session-Zugriff sowohl in Middleware/Server Components als auch im Browser | 2026-08-04 |
+| Routen-Schutz über zentrale Next.js Middleware statt Prüfung in jeder einzelnen Seite | Eine Stelle prüft bei jedem Request die Session; künftige geschützte Seiten (Dashboard, alle Hubs) brauchen keine eigene Auth-Logik mehr | 2026-08-04 |
+| Login-Vorgang läuft über eine Server Action, nicht über einen direkten Client-Aufruf | Zugangsdaten werden serverseitig verarbeitet statt im Browser-JavaScript; sicherer Standardansatz für Formulare im App Router | 2026-08-04 |
+| Schema-Änderungen (inkl. `profiles`-Tabelle und RLS-Policy) über versionierte Supabase-CLI-Migrationsdateien im Repo (`supabase/migrations/`) | Nutzerentscheidung: nachvollziehbare, in Git versionierte Schema-Historie — wichtig, da noch 8 weitere Features eigene Tabellen anlegen werden | 2026-08-04 |
+| Row Level Security auf `profiles` von Anfang an aktiv, nicht erst bei Bedarf nachgerüstet | Etabliert das RLS-Muster, das alle künftigen Hub-Tabellen (PROJ-2 ff.) übernehmen; verhindert versehentlich offene Endpunkte auch bei nur einem Nutzer | 2026-08-04 |
 
 ---
 <!-- Sections below are added by subsequent skills -->
 
 ## Tech Design (Solution Architect)
-_To be added by /architecture_
+
+### Component Structure
+```
+App (Next.js App Router)
+├── Middleware (läuft vor jedem Request)
+│   └── Prüft Session → leitet bei fehlender Session zu /login?redirect=<pfad> um
+│
+├── /login (öffentliche Route)
+│   └── Login-Seite
+│       ├── Ladezustand (kurz, während initialer Auth-Check läuft)
+│       └── Login-Formular
+│           ├── E-Mail-Feld + Validierung
+│           ├── Passwort-Feld + Validierung
+│           ├── Fehleranzeige (falsche Zugangsdaten / Verbindungsfehler)
+│           └── "Anmelden"-Button (löst Server Action aus)
+│
+└── /dashboard (geschützte Route — Platzhalter bis PROJ-9)
+    └── Platzhalter-Seite
+        ├── "Eingeloggt als [E-Mail]"
+        └── "Abmelden"-Button
+```
+
+### Data Model (in plain language)
+```
+Tabelle "profiles" (eine Zeile pro Supabase-Auth-Nutzer):
+- id            → verweist auf den zugehörigen Auth-Nutzer
+- email
+- created_at
+
+Zugriffsregel (Row Level Security):
+Ein Nutzer sieht und bearbeitet ausschließlich seine eigene Zeile
+(Muster: user_id = aktuell eingeloggter Nutzer). Dieses Muster wird
+von allen künftigen Hub-Tabellen (Themenkatalog, Karteikarten, ...)
+übernommen.
+
+Gespeichert in: Supabase (PostgreSQL) — zentral, cloud-basiert,
+über Geräte hinweg synchron.
+```
+
+### Tech Decisions (Reasoning)
+- **Supabase Auth (E-Mail + Passwort):** bereits über Env-Variablen und Client vorbereitet; deckt Login, Logout und automatisches Session-Refresh ab, ohne eigene Auth-Logik bauen zu müssen.
+- **`@supabase/ssr` zusätzlich installieren:** ermöglicht der Middleware und den Server-Komponenten, die Session sicher zu lesen — nötig für den Routen-Schutz und die Server Action beim Login.
+- **Zentrale Middleware für Routen-Schutz:** eine einzige Stelle entscheidet, ob eine Seite geschützt ist und leitet bei fehlender Session um. Jede künftige Seite (Dashboard, alle Hubs) ist damit automatisch abgesichert, ohne dass das dort erneut implementiert werden muss.
+- **Server Action für den Login:** die eingegebenen Zugangsdaten werden auf dem Server verarbeitet statt im Browser-JavaScript — reduziert die Angriffsfläche und ist der im App Router vorgesehene Standardweg für Formulare.
+- **Supabase-CLI-Migrationen:** Schema-Änderungen (die `profiles`-Tabelle und ihre RLS-Policy) werden als SQL-Dateien im Repo versioniert und über die Supabase CLI auf das Projekt angewendet — schafft eine nachvollziehbare Historie für alle künftigen Tabellen.
+- **RLS von Anfang an aktiv:** auch bei nur einem Nutzer verhindert das, dass versehentlich ungeschützte Datenzugriffe entstehen, und legt das Muster für alle folgenden Features fest.
+
+### Dependencies
+- `@supabase/ssr` — Session-Verwaltung serverseitig (Middleware, Server Components, Server Actions)
+- `@supabase/supabase-js` — bereits installiert, Basis-Client für Auth und Datenbankzugriff
+- Supabase CLI (lokales Werkzeug, kein npm-Paket im Projekt) — zum Erstellen und Anwenden der Migrationsdateien
 
 ## QA Test Results
 _To be added by /qa_

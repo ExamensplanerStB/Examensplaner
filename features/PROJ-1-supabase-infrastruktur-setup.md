@@ -1,8 +1,8 @@
 # PROJ-1: Supabase-Infrastruktur-Setup
 
-## Status: Architected
+## Status: In Progress
 **Created:** 2026-08-03
-**Last Updated:** 2026-08-04
+**Last Updated:** 2026-08-05
 
 ## Dependencies
 - None
@@ -133,6 +133,27 @@ Gespeichert in: Supabase (PostgreSQL) — zentral, cloud-basiert,
 - `@supabase/ssr` — Session-Verwaltung serverseitig (Middleware, Server Components, Server Actions)
 - `@supabase/supabase-js` — bereits installiert, Basis-Client für Auth und Datenbankzugriff
 - Supabase CLI (lokales Werkzeug, kein npm-Paket im Projekt) — zum Erstellen und Anwenden der Migrationsdateien
+
+## Frontend Implementation Notes (Frontend Developer)
+
+**Umgesetzt (2026-08-05):**
+- Design-System aus `docs/design-system.md` global verdrahtet: Farbtokens (`--bg`, `--ink-*`, `--ampel-*`, `--hub-*`, `--cal-*`) und shadcn-Aliase in `src/app/globals.css`, Tailwind-Farb-/Font-Mapping in `tailwind.config.ts`, Schriften DM Serif Display + DM Sans via `next/font/google` in `src/app/layout.tsx`
+- `/login` (`src/app/login/page.tsx` + `src/components/login-form.tsx`): E-Mail/Passwort-Formular mit react-hook-form + Zod (`src/lib/schemas/login.ts`), Ladezustand, Fehleranzeige, Redirect-Parameter-Validierung (nur relative Pfade)
+- `/dashboard` (`src/app/dashboard/page.tsx`): Platzhalter-Seite (kein echtes Session-Handling)
+- `/` redirected auf `/dashboard`
+
+**Bewusst noch nicht umgesetzt (folgt in /backend):**
+- `src/app/login/actions.ts` ist ein Platzhalter-Server-Action: gibt nach 600ms immer den Fehler „E-Mail oder Passwort ist falsch" zurück, unabhängig von den Eingaben. Kein echter Supabase-Aufruf, kein Redirect bei Erfolg.
+- Middleware für Routen-Schutz existiert noch nicht — `/dashboard` ist aktuell ungeschützt erreichbar
+- `profiles`-Tabelle, RLS-Policy, Supabase-CLI-Migrationen existieren noch nicht
+- Ladezustand während des initialen Auth-Checks auf `/login` (Edge Case aus Spec) ist noch nicht implementiert, da es noch keine echte Session-Prüfung gibt
+- Dashboard zeigt keine echte Nutzer-E-Mail (Platzhaltertext), bis Backend die Session bereitstellt
+
+**Abweichung von Projektregel:** `.claude/rules/frontend.md` beschrieb ursprünglich ein Client-seitiges Supabase-Auth-Muster (`window.location.href`, `data.session`-Check). Das widersprach der bereits abgenommenen Server-Action-Architektur aus PROJ-1 Tech Design. Nutzer hat sich für Beibehaltung der Server Action entschieden (2026-08-05); die Regel-Datei wurde entsprechend angepasst.
+
+**Getestet im Browser (Playwright, headless Chromium):** Login-Formular (leer/Validierung, falsche Zugangsdaten inkl. Passwort-Reset/E-Mail-Erhalt), Dashboard-Platzhalter, Desktop (1280px) + Mobile (375px) Ansicht. Alle sichtbaren Zustände entsprechen den Acceptance Criteria, soweit ohne Backend testbar.
+
+**Bekannte vorbestehende Tooling-Lücke (nicht PROJ-1-spezifisch):** `next lint` existiert in Next.js 16 nicht mehr und es fehlt ein `eslint.config.js` im Projekt — `npm run lint` schlägt fehl. `npm run build` (TypeScript-Check) läuft fehlerfrei durch.
 
 ## QA Test Results
 _To be added by /qa_

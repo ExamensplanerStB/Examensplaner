@@ -29,6 +29,6 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card"
 - Use TypeScript interfaces for all props
 
 ## Auth Best Practices (Supabase)
-- Use `window.location.href` for post-login redirect (not `router.push`)
-- Always verify `data.session` exists before redirecting
+- Login läuft über eine Server Action, nicht über einen direkten Client-seitigen `supabase.auth.signInWithPassword()`-Aufruf (siehe PROJ-1 Tech Design) — Zugangsdaten bleiben serverseitig
+- Redirect nach erfolgreichem Login über den Server Action Response-Flow (z.B. `redirect()` in der Server Action), nicht `window.location.href`
 - Always reset loading state in all code paths (success, error, finally)

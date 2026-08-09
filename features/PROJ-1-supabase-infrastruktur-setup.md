@@ -155,6 +155,31 @@ Gespeichert in: Supabase (PostgreSQL) — zentral, cloud-basiert,
 
 **Bekannte vorbestehende Tooling-Lücke (nicht PROJ-1-spezifisch):** `next lint` existiert in Next.js 16 nicht mehr und es fehlt ein `eslint.config.js` im Projekt — `npm run lint` schlägt fehl. `npm run build` (TypeScript-Check) läuft fehlerfrei durch.
 
+## Backend Implementation Notes (Backend Developer)
+
+**Umgesetzt (2026-08-09):**
+- `@supabase/ssr` installiert; `src/lib/supabase/client.ts` (Browser) und `src/lib/supabase/server.ts` (Server Components/Actions, Cookie-basiert) ersetzen das alte `src/lib/supabase.ts`
+- `src/proxy.ts` (Next.js 16 hat die `middleware.ts`-Konvention zu `proxy.ts` umbenannt — `middleware.ts` ist deprecated): prüft die Session bei jedem Request, leitet nicht eingeloggte Zugriffe auf geschützte Routen zu `/login?redirect=<pfad>` um, und leitet bereits eingeloggte Nutzer von `/login` weg zu `/dashboard`. Das löst auch den zuvor offenen Edge Case „Ladezustand während des initialen Auth-Checks" — die Weiche erfolgt serverseitig, bevor HTML gesendet wird, kein Flackern möglich
+- `src/app/login/actions.ts`: echte `signInWithPassword`-Anmeldung; Verbindungsfehler (Exception) → „Verbindung fehlgeschlagen"-Meldung, ungültige Zugangsdaten → generische „E-Mail oder Passwort ist falsch"-Meldung, Erfolg → Redirect zum validierten Ziel
+- `src/app/dashboard/actions.ts` (`logout`) + `src/app/dashboard/page.tsx` liest echte Session serverseitig und zeigt die echte E-Mail-Adresse an
+- Redirect-Validierung (Open-Redirect-Schutz) aus `login/page.tsx` und `login/actions.ts` in `src/lib/safe-redirect.ts` zusammengeführt, inkl. Unit-Tests (`src/lib/safe-redirect.test.ts`, 9 Tests, alle grün)
+- Migration `supabase/migrations/20260805192850_create_profiles.sql`: `profiles`-Tabelle (1:1 zu `auth.users`), RLS-Policies für SELECT/UPDATE (eigene Zeile), Trigger `on_auth_user_created` legt die Profilzeile automatisch an, da es keinen Sign-up-Flow gibt — INSERT/DELETE durch Nutzer selbst ist bewusst ohne Policy (per RLS verweigert)
+
+**Migration noch nicht auf das Live-Projekt angewendet:** Ich habe in dieser Sandbox keinen Zugriff auf Supabase-Projekt-Ref/DB-Passwort. Nutzer wendet die Migration selbst an:
+```
+npx supabase login
+npx supabase link --project-ref <dein-projekt-ref>
+npx supabase db push
+```
+Danach den einen Nutzer-Account manuell im Supabase-Dashboard anlegen (Authentication → Add user) — der Trigger legt die `profiles`-Zeile automatisch an.
+
+**Getestet:**
+- `npm run build` und `npm test` (9/9) laufen fehlerfrei durch
+- Browser (Playwright): nicht eingeloggter Zugriff auf `/dashboard` → korrekter Redirect zu `/login?redirect=%2Fdashboard`; echter `signInWithPassword`-Aufruf mit nicht existierendem Nutzer → korrekte generische Fehlermeldung
+- Erfolgreicher Login + Logout mit echtem Account konnte nicht getestet werden, da der Nutzer-Account noch nicht im Supabase-Dashboard angelegt ist (s.o.)
+
+**Stolperstein:** `middleware.ts` im Projekt-Root wurde von Next.js 16 stillschweigend ignoriert (kein Fehler, kein Redirect) — bei `src/`-Projektstruktur muss die Datei unter `src/middleware.ts` bzw. jetzt `src/proxy.ts` liegen.
+
 ## QA Test Results
 _To be added by /qa_
 

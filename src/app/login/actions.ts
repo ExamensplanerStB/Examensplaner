@@ -1,15 +1,32 @@
 "use server";
 
+import { redirect } from "next/navigation";
+
+import { createClient } from "@/lib/supabase/server";
+import { isSafeRedirectTarget } from "@/lib/safe-redirect";
 import type { LoginFormValues } from "@/lib/schemas/login";
 
-export type LoginResult = { error: string } | { success: true };
+export type LoginResult = { error: string };
 
-// Platzhalter bis /backend die echte Supabase-Anmeldung + Redirect verdrahtet (siehe PROJ-1 Tech Design).
 export async function login(
   values: LoginFormValues,
-  _redirectTo: string
+  redirectTo: string
 ): Promise<LoginResult> {
-  await new Promise((resolve) => setTimeout(resolve, 600));
-  void values;
-  return { error: "E-Mail oder Passwort ist falsch" };
+  const supabase = await createClient();
+
+  let signInError;
+  try {
+    ({ error: signInError } = await supabase.auth.signInWithPassword({
+      email: values.email,
+      password: values.password,
+    }));
+  } catch {
+    return { error: "Verbindung fehlgeschlagen, bitte später erneut versuchen" };
+  }
+
+  if (signInError) {
+    return { error: "E-Mail oder Passwort ist falsch" };
+  }
+
+  redirect(isSafeRedirectTarget(redirectTo) ? redirectTo : "/dashboard");
 }

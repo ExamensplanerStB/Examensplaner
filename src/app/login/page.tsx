@@ -1,12 +1,5 @@
 import { LoginForm } from "@/components/login-form";
-
-function resolveRedirectTarget(redirect: string | string[] | undefined): string {
-  const value = Array.isArray(redirect) ? redirect[0] : redirect;
-  if (value && value.startsWith("/") && !value.startsWith("//")) {
-    return value;
-  }
-  return "/dashboard";
-}
+import { resolveRedirectTarget } from "@/lib/safe-redirect";
 
 export default async function LoginPage({
   searchParams,

@@ -6,8 +6,16 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { createClient } from "@/lib/supabase/server";
 
-export default function DashboardPage() {
+import { logout } from "./actions";
+
+export default async function DashboardPage() {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
   return (
     <main className="flex min-h-screen items-center justify-center bg-background p-4">
       <Card className="w-full max-w-sm shadow-card">
@@ -22,11 +30,13 @@ export default function DashboardPage() {
         <CardContent className="space-y-4 text-center">
           <p className="text-sm text-muted-foreground">
             Eingeloggt als{" "}
-            <span className="italic">wird mit /backend befüllt</span>
+            <span className="font-medium text-foreground">{user?.email}</span>
           </p>
-          <Button asChild variant="outline" className="w-full">
-            <a href="/login">Abmelden</a>
-          </Button>
+          <form action={logout}>
+            <Button type="submit" variant="outline" className="w-full">
+              Abmelden
+            </Button>
+          </form>
         </CardContent>
       </Card>
     </main>

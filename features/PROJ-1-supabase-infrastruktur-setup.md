@@ -1,8 +1,8 @@
 # PROJ-1: Supabase-Infrastruktur-Setup
 
-## Status: In Progress
+## Status: In Review
 **Created:** 2026-08-03
-**Last Updated:** 2026-08-05
+**Last Updated:** 2026-08-11
 
 ## Dependencies
 - None
@@ -181,7 +181,133 @@ Danach den einen Nutzer-Account manuell im Supabase-Dashboard anlegen (Authentic
 **Stolperstein:** `middleware.ts` im Projekt-Root wurde von Next.js 16 stillschweigend ignoriert (kein Fehler, kein Redirect) — bei `src/`-Projektstruktur muss die Datei unter `src/middleware.ts` bzw. jetzt `src/proxy.ts` liegen.
 
 ## QA Test Results
-_To be added by /qa_
+
+**Tested:** 2026-08-11
+**App URL:** http://localhost:3000
+**Tester:** QA Engineer (AI)
+**Browser:** Chromium (Desktop 1280px, Mobile 375px, Tablet 768px), WebKit (Desktop)
+
+### Acceptance Criteria Status
+
+#### AC1: Nicht eingeloggter Zugriff auf geschützte Route
+- [x] `/dashboard` ohne Session → Redirect zu `/login?redirect=%2Fdashboard` (verifiziert per E2E-Test + manuell)
+
+#### AC2: Korrekte Zugangsdaten → Redirect zum ursprünglichen Ziel
+- [ ] BLOCKIERT: Kein echter Nutzer-Account im Supabase-Projekt vorhanden (Migration wurde noch nicht angewendet, siehe Backend Implementation Notes). Kann erst nach Account-Anlage getestet werden.
+
+#### AC3: Falsche Zugangsdaten
+- [x] Generische Meldung „E-Mail oder Passwort ist falsch" erscheint (gegen echtes Supabase-Projekt getestet)
+- [x] E-Mail bleibt im Feld erhalten
+- [x] Passwortfeld wird geleert
+
+#### AC4: Leeres Formular
+- [x] Je eine Validierungsfehlermeldung pro Pflichtfeld
+- [x] Keine Netzwerkanfrage wird ausgelöst (per Request-Interception verifiziert)
+
+#### AC5: Supabase nicht erreichbar
+- [ ] NICHT LIVE GETESTET: Code-Review bestätigt korrekten try/catch mit der spezifizierten Meldung in `login/actions.ts`, aber ein echter Verbindungsabbruch wurde nicht simuliert. Siehe auch BUG-5 (Middleware hat keinen entsprechenden Schutz).
+
+#### AC6: Abmelden
+- [ ] BLOCKIERT: Erfordert echten eingeloggten Nutzer (s. AC2)
+
+#### AC7: Session bleibt über Zeit bestehen
+- [ ] BLOCKIERT: Erfordert echten eingeloggten Nutzer (s. AC2)
+
+#### AC8: RLS — Nutzer sieht nur eigene `profiles`-Zeile
+- [ ] BLOCKIERT: Migration wurde noch nicht auf das Live-Projekt angewendet, `profiles`-Tabelle existiert dort noch nicht
+
+#### AC9: RLS verweigert Zugriff ohne Session
+- [ ] BLOCKIERT: siehe AC8
+
+### Edge Cases Status
+
+#### EC-1: Session-Ablauf + Token-Refresh
+- [ ] NICHT LIVE GETESTET (Code-Review: Standardmuster von `@supabase/ssr` korrekt implementiert in `src/proxy.ts`, aber kein langlebiger Sessiontest durchgeführt)
+
+#### EC-2: Fehlkonfiguration (fehlende Env-Variablen)
+- [ ] NICHT GETESTET (hätte funktionierende lokale Konfiguration zerstört)
+
+#### EC-3: Parallele Logins auf mehreren Geräten
+- [ ] BLOCKIERT: Erfordert echten Account
+
+#### EC-4: Redirect-Parameter-Validierung (Open-Redirect-Schutz)
+- [ ] **BUG (Critical):** Schutz ist umgehbar — siehe BUG-1
+
+#### EC-5: Ladezustand während initialem Auth-Check
+- [x] Gelöst durch serverseitige Middleware-Weiche (kein Client-Rendering vor Redirect-Entscheidung, kein Flackern möglich) — verifiziert per sofortiger 307-Antwort ohne HTML-Auslieferung
+
+### Security Audit Results
+- [x] Authentication: Geschützte Route ohne Session nicht erreichbar (Grundfall)
+- [ ] **BUG (Medium):** Middleware erkennt „öffentliche Route" per Prefix-Match (`startsWith("/login")`) statt exaktem Pfad — siehe BUG-3
+- [ ] Authorization (RLS): NICHT TESTBAR — Migration noch nicht angewendet
+- [x] Input-Validierung: XSS-Payload im E-Mail-Feld wird von React korrekt escaped, kein Skript-Ausführung, kein `dangerouslySetInnerHTML` im gesamten Code
+- [ ] **BUG (Critical):** Open Redirect — siehe BUG-1
+- [ ] **BUG (High):** Fehlende serverseitige Zod-Validierung der Server-Action-Eingaben — siehe BUG-2
+- [x] Keine Secrets im Code oder in Git-Historie; `.env.local` korrekt via `.env*.local` ignoriert; kein Service-Role-Key im Frontend
+- [x] Rate-Limiting: bewusst nicht implementiert (Produktentscheidung, dokumentiert in Decision Log — kein Bug)
+
+### Bugs Found
+
+#### BUG-1: Open Redirect durch Backslash-Bypass in der Redirect-Validierung
+- **Severity:** Critical
+- **Betroffene Datei:** `src/lib/safe-redirect.ts` (`isSafeRedirectTarget`)
+- **Steps to Reproduce:**
+  1. `isSafeRedirectTarget("/\\evil.com")` aufrufen
+  2. Erwartet: `false` (kein gültiges internes Ziel)
+  3. Tatsächlich: `true` — die Prüfung `startsWith("/") && !startsWith("//")` lässt Backslash-Präfixe durch
+  4. Beweis der Ausnutzbarkeit: `new URL("/\\evil.com", "https://example.com").href` ergibt `"https://evil.com/"` (WHATWG-URL-Verhalten, das auch Browser beim Folgen eines `Location`-Headers verwenden)
+- **Angriffsszenario:** Ein Angreifer verschickt `https://<app>/login?redirect=%2F%5Cevil.com`. Meldet sich das Opfer an, ruft `src/app/login/actions.ts` `redirect(isSafeRedirectTarget(redirectTo) ? redirectTo : "/dashboard")` auf — da die Prüfung fälschlich `true` liefert, landet das Opfer direkt nach dem Login auf `evil.com`. Da Server Actions direkt per POST aufrufbar sind, ist der Angriff auch ganz ohne den Login-Formular-Umweg möglich (`redirectTo` wird serverseitig gar nicht typgeprüft).
+- **Priority:** Fix before deployment
+
+#### BUG-2: Server Action `login()` validiert Eingaben nicht serverseitig
+- **Severity:** High
+- **Betroffene Datei:** `src/app/login/actions.ts`
+- **Steps to Reproduce:**
+  1. `login()` wird direkt mit `values` aufgerufen, ohne `loginSchema.parse(values)` oder `.safeParse(values)`
+  2. Da Next.js Server Actions als POST-Endpunkte erreichbar sind, kann die React-Hook-Form/Zod-Validierung im Client vollständig umgangen werden
+  3. Verstößt gegen die explizite Projektregel in `.claude/rules/security.md`: „Validate ALL user input on the server side with Zod — Never trust client-side validation alone"
+- **Priority:** Fix before deployment
+
+#### BUG-3: Middleware erkennt Login-Route per Prefix statt exaktem Pfad
+- **Severity:** Medium
+- **Betroffene Datei:** `src/proxy.ts` Zeile 32 (`request.nextUrl.pathname.startsWith("/login")`)
+- **Steps to Reproduce:**
+  1. `curl http://localhost:3000/login-fake-probe` ohne Session aufrufen
+  2. Erwartet: Da keine solche Route existiert, wäre ein 404 nach erfolgter Auth-Prüfung akzeptabel — aber sobald in einem künftigen Feature eine echte Route wie `/login-history` entsteht, würde sie fälschlich als „öffentlich" behandelt
+  3. Tatsächlich beobachtet: Anfrage erhält 404 *ohne* Redirect zu `/login`, d.h. die Middleware hat die Auth-Prüfung für diesen Pfad komplett übersprungen (Beweis, dass der Prefix-Match zu breit greift)
+- **Priority:** Fix before deployment (geringes aktuelles Risiko, da noch keine kollidierende Route existiert, aber leicht vergessene Falle für künftige Features)
+
+#### BUG-4: `.env.local.example` wurde entfernt, keine Env-Var-Dokumentation mehr vorhanden
+- **Severity:** Low
+- **Steps to Reproduce:**
+  1. `git ls-files | grep env` zeigt keine `.env.local.example` mehr
+  2. Verstößt gegen `.claude/rules/security.md`: „Document all required env vars in .env.local.example with dummy values"
+- **Priority:** Nice to have (vor `/deploy` sinnvoll nachzuholen, spätestens wenn ein zweites Gerät eingerichtet wird)
+
+#### BUG-5: Keine Fehlerbehandlung um `supabase.auth.getUser()` in der Middleware
+- **Severity:** Low
+- **Betroffene Datei:** `src/proxy.ts`
+- **Steps to Reproduce:**
+  1. Wenn Supabase nicht erreichbar ist, wirft `getUser()` potenziell eine Exception
+  2. Da kein try/catch vorhanden ist, würde jede Anfrage (auch zu `/login` selbst) mit einer rohen 500-Fehlerseite statt der spezifizierten „Verbindung fehlgeschlagen"-Meldung enden
+  3. Nicht live reproduziert (hätte funktionierende Konfiguration erfordert zu kappen), aber durch Code-Review bestätigt
+- **Priority:** Fix in next sprint
+
+### Summary
+- **Acceptance Criteria:** 2/9 passed, 1/9 failed (EC-4/BUG-1 betrifft AC2 direkt), 6/9 blockiert (Migration/Account noch ausstehend)
+- **Bugs Found:** 5 total (1 Critical, 1 High, 1 Medium, 2 Low)
+- **Security:** Issues found — Open Redirect (Critical) und fehlende serverseitige Validierung (High) müssen vor Produktivbetrieb behoben werden
+- **Production Ready:** NO
+- **Recommendation:** BUG-1 und BUG-2 vor Deployment fixen (`/backend` erneut ausführen). BUG-3 ebenfalls vor Deployment, da er künftige Features betrifft. BUG-4/5 können vor `/deploy` nachgezogen werden. Nach den Fixes zusätzlich: Migration auf das Live-Projekt anwenden, echten Account anlegen und AC2/AC6/AC7/AC8/AC9 nachtesten — erst dann ist das Feature vollständig verifiziert.
+
+### Automatisierte Tests
+- **Unit-Tests:** `npm test` — 9/9 grün (`src/lib/safe-redirect.test.ts`; deckt den gefundenen Backslash-Bypass aktuell noch NICHT ab — sollte bei der Bugfix-Runde als Regressionstest ergänzt werden)
+- **E2E-Tests:** `npm run test:e2e` — 8/8 grün, neu angelegt in `tests/PROJ-1-supabase-infrastruktur-setup.spec.ts` (AC1, AC3, AC4, XSS-Check), je Chromium + Mobile Safari (WebKit)
+- **Build:** `npm run build` — fehlerfrei
+- **Testrunner-Fix:** `vitest.config.ts` sammelte versehentlich auch die neuen Playwright-Spec-Dateien ein und schlug fehl; `exclude: ['**/tests/**']` ergänzt, damit Unit- und E2E-Suiten sauber getrennt bleiben
+
+### Umgebungshinweis
+Playwright-Browser-Downloads (`npx playwright install`) hängen sich in dieser Sandbox beim Entpacken auf (vermutlich macOS-Gatekeeper-Scan ohne Netzwerkzugriff auf Apples Prüf-Server). Workaround: ZIP manuell mit `unzip` entpacken, `xattr -cr` zum Entfernen des Quarantäne-Attributs, und eine leere `INSTALLATION_COMPLETE`-Datei im Browser-Verzeichnis anlegen (sonst verwirft Playwright den manuell installierten Browser beim nächsten `install`-Aufruf als unvollständig).
 
 ## Deployment
 _To be added by /deploy_

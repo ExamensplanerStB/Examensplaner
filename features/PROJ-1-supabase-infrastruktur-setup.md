@@ -268,6 +268,7 @@ Danach den einen Nutzer-Account manuell im Supabase-Dashboard anlegen (Authentic
   2. Da Next.js Server Actions als POST-Endpunkte erreichbar sind, kann die React-Hook-Form/Zod-Validierung im Client vollständig umgangen werden
   3. Verstößt gegen die explizite Projektregel in `.claude/rules/security.md`: „Validate ALL user input on the server side with Zod — Never trust client-side validation alone"
 - **Priority:** Fix before deployment
+- **Status: FIXED (2026-08-11)** — `login()` ruft jetzt zuerst `loginSchema.safeParse(values)` auf; bei ungültiger Eingabe wird die generische Fehlermeldung zurückgegeben, ohne dass `supabase.auth.signInWithPassword` überhaupt aufgerufen wird (mit gemocktem Supabase-Client verifiziert). Der eigentliche Sign-in verwendet danach `parsed.data` statt der rohen `values`. Neue Tests in `src/app/login/actions.test.ts` (5 Tests, u.a. nicht-string-Payloads wie sie ein direkter POST an die Action-Route senden könnte) — `npm test`: 16/16 grün. `npm run build` und `npm run test:e2e` (8/8, ein einmaliger Flake durch parallele Worker gegen die echte Supabase-API beim ersten Lauf, beim Wiederholen grün) weiterhin grün.
 
 #### BUG-3: Middleware erkennt Login-Route per Prefix statt exaktem Pfad
 - **Severity:** Medium
@@ -296,13 +297,13 @@ Danach den einen Nutzer-Account manuell im Supabase-Dashboard anlegen (Authentic
 
 ### Summary
 - **Acceptance Criteria:** 2/9 passed, 1/9 failed (EC-4/BUG-1 betrifft AC2 direkt), 6/9 blockiert (Migration/Account noch ausstehend)
-- **Bugs Found:** 5 total (1 Critical, 1 High, 1 Medium, 2 Low) — **BUG-1 (Critical) am 2026-08-11 gefixt**, BUG-2/3/4/5 weiterhin offen
-- **Security:** Open Redirect (Critical) behoben; fehlende serverseitige Validierung (High, BUG-2) muss noch vor Produktivbetrieb behoben werden
-- **Production Ready:** NO (BUG-2 und BUG-3 stehen noch aus)
-- **Recommendation:** BUG-2 als nächstes fixen (`/backend`), danach BUG-3, da er künftige Features betrifft. BUG-4/5 können vor `/deploy` nachgezogen werden. Nach allen Fixes zusätzlich: Migration auf das Live-Projekt anwenden, echten Account anlegen und AC2/AC6/AC7/AC8/AC9 nachtesten — erst dann ist das Feature vollständig verifiziert.
+- **Bugs Found:** 5 total (1 Critical, 1 High, 1 Medium, 2 Low) — **BUG-1 (Critical) und BUG-2 (High) am 2026-08-11 gefixt**, BUG-3/4/5 weiterhin offen
+- **Security:** Open Redirect (Critical) und fehlende serverseitige Validierung (High) behoben
+- **Production Ready:** NO (BUG-3 steht noch aus)
+- **Recommendation:** BUG-3 als nächstes fixen (`/backend`), da er künftige Features betrifft. BUG-4/5 können vor `/deploy` nachgezogen werden. Nach allen Fixes zusätzlich: Migration auf das Live-Projekt anwenden, echten Account anlegen und AC2/AC6/AC7/AC8/AC9 nachtesten — erst dann ist das Feature vollständig verifiziert.
 
 ### Automatisierte Tests
-- **Unit-Tests:** `npm test` — 11/11 grün (`src/lib/safe-redirect.test.ts`, inkl. 3 neuer Regressionstests für den gefixten Backslash/Tab/`javascript:`-Bypass)
+- **Unit-Tests:** `npm test` — 16/16 grün (`src/lib/safe-redirect.test.ts` inkl. 3 Regressionstests für den gefixten Backslash/Tab/`javascript:`-Bypass; neu `src/app/login/actions.test.ts` mit 5 Tests für die serverseitige Validierung, Supabase-Client gemockt)
 - **E2E-Tests:** `npm run test:e2e` — 8/8 grün, neu angelegt in `tests/PROJ-1-supabase-infrastruktur-setup.spec.ts` (AC1, AC3, AC4, XSS-Check), je Chromium + Mobile Safari (WebKit)
 - **Build:** `npm run build` — fehlerfrei
 - **Testrunner-Fix:** `vitest.config.ts` sammelte versehentlich auch die neuen Playwright-Spec-Dateien ein und schlug fehl; `exclude: ['**/tests/**']` ergänzt, damit Unit- und E2E-Suiten sauber getrennt bleiben

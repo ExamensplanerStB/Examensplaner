@@ -1,5 +1,12 @@
+const TRUSTED_BASE = "http://internal.invalid";
+
 export function isSafeRedirectTarget(path: string): boolean {
-  return path.startsWith("/") && !path.startsWith("//");
+  if (typeof path !== "string" || !path.startsWith("/")) return false;
+  try {
+    return new URL(path, TRUSTED_BASE).origin === TRUSTED_BASE;
+  } catch {
+    return false;
+  }
 }
 
 export function resolveRedirectTarget(

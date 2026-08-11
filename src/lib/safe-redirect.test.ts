@@ -21,6 +21,17 @@ describe("isSafeRedirectTarget", () => {
     expect(isSafeRedirectTarget("dashboard")).toBe(false);
     expect(isSafeRedirectTarget("")).toBe(false);
   });
+
+  it("lehnt Backslash-Bypass ab (BUG-1: Browser lösen /\\evil.com als //evil.com auf)", () => {
+    expect(isSafeRedirectTarget("/\\evil.com")).toBe(false);
+    expect(isSafeRedirectTarget("\\/evil.com")).toBe(false);
+    expect(isSafeRedirectTarget("/\\/evil.com")).toBe(false);
+  });
+
+  it("lehnt weitere Schema-Varianten ab", () => {
+    expect(isSafeRedirectTarget("/\t/evil.com")).toBe(false);
+    expect(isSafeRedirectTarget("javascript:alert(1)")).toBe(false);
+  });
 });
 
 describe("resolveRedirectTarget", () => {

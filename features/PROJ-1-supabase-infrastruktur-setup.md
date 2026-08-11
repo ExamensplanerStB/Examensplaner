@@ -258,6 +258,7 @@ Danach den einen Nutzer-Account manuell im Supabase-Dashboard anlegen (Authentic
   4. Beweis der Ausnutzbarkeit: `new URL("/\\evil.com", "https://example.com").href` ergibt `"https://evil.com/"` (WHATWG-URL-Verhalten, das auch Browser beim Folgen eines `Location`-Headers verwenden)
 - **Angriffsszenario:** Ein Angreifer verschickt `https://<app>/login?redirect=%2F%5Cevil.com`. Meldet sich das Opfer an, ruft `src/app/login/actions.ts` `redirect(isSafeRedirectTarget(redirectTo) ? redirectTo : "/dashboard")` auf — da die Prüfung fälschlich `true` liefert, landet das Opfer direkt nach dem Login auf `evil.com`. Da Server Actions direkt per POST aufrufbar sind, ist der Angriff auch ganz ohne den Login-Formular-Umweg möglich (`redirectTo` wird serverseitig gar nicht typgeprüft).
 - **Priority:** Fix before deployment
+- **Status: FIXED (2026-08-11)** — `isSafeRedirectTarget` löst den Pfad jetzt gegen eine feste, nie erreichbare Trusted-Base-URL (`http://internal.invalid`) auf und vergleicht die resultierende Origin, statt einzelne Zeichen (`//`) auf die Deny-Liste zu setzen. Das nutzt dieselbe URL-Parsing-Logik, die den Angriff ermöglichte, jetzt als Schutzmechanismus — erkennt damit auch verwandte Bypass-Varianten (Tabs/Steuerzeichen, `javascript:`-Schema), nicht nur den einen gemeldeten Fall. Regressionstests in `src/lib/safe-redirect.test.ts` ergänzt (`npm test`: 11/11 grün, inkl. 3 neue Tests für Backslash/Tab/`javascript:`-Bypässe). `npm run build` und `npm run test:e2e` (8/8) weiterhin grün.
 
 #### BUG-2: Server Action `login()` validiert Eingaben nicht serverseitig
 - **Severity:** High
@@ -295,13 +296,13 @@ Danach den einen Nutzer-Account manuell im Supabase-Dashboard anlegen (Authentic
 
 ### Summary
 - **Acceptance Criteria:** 2/9 passed, 1/9 failed (EC-4/BUG-1 betrifft AC2 direkt), 6/9 blockiert (Migration/Account noch ausstehend)
-- **Bugs Found:** 5 total (1 Critical, 1 High, 1 Medium, 2 Low)
-- **Security:** Issues found — Open Redirect (Critical) und fehlende serverseitige Validierung (High) müssen vor Produktivbetrieb behoben werden
-- **Production Ready:** NO
-- **Recommendation:** BUG-1 und BUG-2 vor Deployment fixen (`/backend` erneut ausführen). BUG-3 ebenfalls vor Deployment, da er künftige Features betrifft. BUG-4/5 können vor `/deploy` nachgezogen werden. Nach den Fixes zusätzlich: Migration auf das Live-Projekt anwenden, echten Account anlegen und AC2/AC6/AC7/AC8/AC9 nachtesten — erst dann ist das Feature vollständig verifiziert.
+- **Bugs Found:** 5 total (1 Critical, 1 High, 1 Medium, 2 Low) — **BUG-1 (Critical) am 2026-08-11 gefixt**, BUG-2/3/4/5 weiterhin offen
+- **Security:** Open Redirect (Critical) behoben; fehlende serverseitige Validierung (High, BUG-2) muss noch vor Produktivbetrieb behoben werden
+- **Production Ready:** NO (BUG-2 und BUG-3 stehen noch aus)
+- **Recommendation:** BUG-2 als nächstes fixen (`/backend`), danach BUG-3, da er künftige Features betrifft. BUG-4/5 können vor `/deploy` nachgezogen werden. Nach allen Fixes zusätzlich: Migration auf das Live-Projekt anwenden, echten Account anlegen und AC2/AC6/AC7/AC8/AC9 nachtesten — erst dann ist das Feature vollständig verifiziert.
 
 ### Automatisierte Tests
-- **Unit-Tests:** `npm test` — 9/9 grün (`src/lib/safe-redirect.test.ts`; deckt den gefundenen Backslash-Bypass aktuell noch NICHT ab — sollte bei der Bugfix-Runde als Regressionstest ergänzt werden)
+- **Unit-Tests:** `npm test` — 11/11 grün (`src/lib/safe-redirect.test.ts`, inkl. 3 neuer Regressionstests für den gefixten Backslash/Tab/`javascript:`-Bypass)
 - **E2E-Tests:** `npm run test:e2e` — 8/8 grün, neu angelegt in `tests/PROJ-1-supabase-infrastruktur-setup.spec.ts` (AC1, AC3, AC4, XSS-Check), je Chromium + Mobile Safari (WebKit)
 - **Build:** `npm run build` — fehlerfrei
 - **Testrunner-Fix:** `vitest.config.ts` sammelte versehentlich auch die neuen Playwright-Spec-Dateien ein und schlug fehl; `exclude: ['**/tests/**']` ergänzt, damit Unit- und E2E-Suiten sauber getrennt bleiben

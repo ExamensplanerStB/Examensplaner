@@ -287,6 +287,7 @@ Danach den einen Nutzer-Account manuell im Supabase-Dashboard anlegen (Authentic
   1. `git ls-files | grep env` zeigt keine `.env.local.example` mehr
   2. Verstößt gegen `.claude/rules/security.md`: „Document all required env vars in .env.local.example with dummy values"
 - **Priority:** Nice to have (vor `/deploy` sinnvoll nachzuholen, spätestens wenn ein zweites Gerät eingerichtet wird)
+- **Status: FIXED (2026-08-13, im Rahmen von `/deploy`)** — `.env.local.example` mit Platzhalterwerten wiederhergestellt.
 
 #### BUG-5: Keine Fehlerbehandlung um `supabase.auth.getUser()` in der Middleware
 - **Severity:** Low
@@ -329,4 +330,16 @@ Beim Nachtest wurde entdeckt, dass `NEXT_PUBLIC_SUPABASE_URL` in `.env.local` ur
 Playwright-Browser-Downloads (`npx playwright install`) hängen sich in dieser Sandbox beim Entpacken auf (vermutlich macOS-Gatekeeper-Scan ohne Netzwerkzugriff auf Apples Prüf-Server). Workaround: ZIP manuell mit `unzip` entpacken, `xattr -cr` zum Entfernen des Quarantäne-Attributs, und eine leere `INSTALLATION_COMPLETE`-Datei im Browser-Verzeichnis anlegen (sonst verwirft Playwright den manuell installierten Browser beim nächsten `install`-Aufruf als unvollständig).
 
 ## Deployment
-_To be added by /deploy_
+
+**Bewusst aufgeschoben (2026-08-13):** `/deploy` wurde gestartet, aber der Nutzer hat entschieden, die App vorerst nicht zu Vercel zu deployen. Der Examensplaner soll während der Examensvorbereitung zunächst nur lokal (`npm run dev`) genutzt werden; Vercel-Deployment folgt zu einem späteren Zeitpunkt.
+
+**Erledigt im Rahmen dieses Durchlaufs:**
+- BUG-4 gefixt: `.env.local.example` wiederhergestellt (Platzhalterwerte, keine echten Secrets)
+
+**Noch offen für einen späteren `/deploy`-Durchlauf:**
+- Erster Push der lokalen Commits zu GitHub (`origin/main` ist 11 Commits zurück) — bewusst noch nicht gemacht
+- Vercel-Projekt anlegen + verbinden, Env-Variablen im Vercel-Dashboard eintragen
+- Security-Headers, Error-Tracking, Performance-Check (siehe `docs/production/`)
+- BUG-5 (Low, fehlende Fehlerbehandlung in `src/proxy.ts`) — kann parallel oder vor dem nächsten Deploy-Versuch gefixt werden
+
+**Lokaler Betrieb bis dahin:** `npm run dev`, Server bei Bedarf manuell starten/stoppen (kein Dauerbetrieb/Hintergrunddienst gewünscht).

@@ -8,6 +8,13 @@ test.describe("PROJ-1: Supabase-Infrastruktur-Setup", () => {
     await expect(page).toHaveURL("/login?redirect=%2Fdashboard");
   });
 
+  test("Sicherheit: Routen, die nur mit /login beginnen, sind weiterhin geschützt (BUG-3)", async ({
+    page,
+  }) => {
+    await page.goto("/login-fake-probe");
+    await expect(page).toHaveURL("/login?redirect=%2Flogin-fake-probe");
+  });
+
   test("AC4: leeres Formular zeigt Validierungsfehler ohne Server-Anfrage", async ({
     page,
   }) => {

@@ -278,6 +278,7 @@ Danach den einen Nutzer-Account manuell im Supabase-Dashboard anlegen (Authentic
   2. Erwartet: Da keine solche Route existiert, wäre ein 404 nach erfolgter Auth-Prüfung akzeptabel — aber sobald in einem künftigen Feature eine echte Route wie `/login-history` entsteht, würde sie fälschlich als „öffentlich" behandelt
   3. Tatsächlich beobachtet: Anfrage erhält 404 *ohne* Redirect zu `/login`, d.h. die Middleware hat die Auth-Prüfung für diesen Pfad komplett übersprungen (Beweis, dass der Prefix-Match zu breit greift)
 - **Priority:** Fix before deployment (geringes aktuelles Risiko, da noch keine kollidierende Route existiert, aber leicht vergessene Falle für künftige Features)
+- **Status: FIXED (2026-08-11)** — `isLoginRoute` prüft jetzt exakte Gleichheit (`pathname === "/login"`) statt `startsWith`. Live verifiziert: `GET /login-fake-probe` liefert jetzt `307 → /login?redirect=%2Flogin-fake-probe` statt zuvor ungeschütztem `404`. Neuer E2E-Test in `tests/PROJ-1-supabase-infrastruktur-setup.spec.ts` hält die Regression fest. `npm test` (16/16), `npm run build` und `npm run test:e2e` (10/10, ein einmaliger Flake gegen die echte Live-API beim ersten Lauf, beim Wiederholen grün) weiterhin grün.
 
 #### BUG-4: `.env.local.example` wurde entfernt, keine Env-Var-Dokumentation mehr vorhanden
 - **Severity:** Low
@@ -297,14 +298,14 @@ Danach den einen Nutzer-Account manuell im Supabase-Dashboard anlegen (Authentic
 
 ### Summary
 - **Acceptance Criteria:** 2/9 passed, 1/9 failed (EC-4/BUG-1 betrifft AC2 direkt), 6/9 blockiert (Migration/Account noch ausstehend)
-- **Bugs Found:** 5 total (1 Critical, 1 High, 1 Medium, 2 Low) — **BUG-1 (Critical) und BUG-2 (High) am 2026-08-11 gefixt**, BUG-3/4/5 weiterhin offen
-- **Security:** Open Redirect (Critical) und fehlende serverseitige Validierung (High) behoben
-- **Production Ready:** NO (BUG-3 steht noch aus)
-- **Recommendation:** BUG-3 als nächstes fixen (`/backend`), da er künftige Features betrifft. BUG-4/5 können vor `/deploy` nachgezogen werden. Nach allen Fixes zusätzlich: Migration auf das Live-Projekt anwenden, echten Account anlegen und AC2/AC6/AC7/AC8/AC9 nachtesten — erst dann ist das Feature vollständig verifiziert.
+- **Bugs Found:** 5 total (1 Critical, 1 High, 1 Medium, 2 Low) — **BUG-1 (Critical), BUG-2 (High) und BUG-3 (Medium) am 2026-08-11 gefixt**, nur noch BUG-4/5 (beide Low) offen
+- **Security:** Open Redirect (Critical), fehlende serverseitige Validierung (High) und der Middleware-Prefix-Match (Medium) behoben
+- **Production Ready:** Noch NO — kein Critical/High-Bug mehr offen, aber 6/9 Acceptance Criteria sind weiterhin blockiert (Migration + echter Account stehen aus) und daher unverifiziert
+- **Recommendation:** BUG-4/5 (Low) können vor `/deploy` nachgezogen werden, sind kein Blocker mehr. Nächster sinnvoller Schritt: Migration auf das Live-Projekt anwenden, echten Account anlegen, dann `/qa` erneut ausführen, um AC2/AC6/AC7/AC8/AC9 zu verifizieren und den Production-Ready-Status offiziell zu aktualisieren.
 
 ### Automatisierte Tests
 - **Unit-Tests:** `npm test` — 16/16 grün (`src/lib/safe-redirect.test.ts` inkl. 3 Regressionstests für den gefixten Backslash/Tab/`javascript:`-Bypass; neu `src/app/login/actions.test.ts` mit 5 Tests für die serverseitige Validierung, Supabase-Client gemockt)
-- **E2E-Tests:** `npm run test:e2e` — 8/8 grün, neu angelegt in `tests/PROJ-1-supabase-infrastruktur-setup.spec.ts` (AC1, AC3, AC4, XSS-Check), je Chromium + Mobile Safari (WebKit)
+- **E2E-Tests:** `npm run test:e2e` — 10/10 grün, `tests/PROJ-1-supabase-infrastruktur-setup.spec.ts` (AC1, AC3, AC4, XSS-Check, BUG-3-Regressionstest), je Chromium + Mobile Safari (WebKit)
 - **Build:** `npm run build` — fehlerfrei
 - **Testrunner-Fix:** `vitest.config.ts` sammelte versehentlich auch die neuen Playwright-Spec-Dateien ein und schlug fehl; `exclude: ['**/tests/**']` ergänzt, damit Unit- und E2E-Suiten sauber getrennt bleiben
 

@@ -2,7 +2,7 @@
 
 ## Status: In Review
 **Created:** 2026-08-03
-**Last Updated:** 2026-08-11
+**Last Updated:** 2026-08-13
 
 ## Dependencies
 - None
@@ -193,7 +193,7 @@ Danach den einen Nutzer-Account manuell im Supabase-Dashboard anlegen (Authentic
 - [x] `/dashboard` ohne Session → Redirect zu `/login?redirect=%2Fdashboard` (verifiziert per E2E-Test + manuell)
 
 #### AC2: Korrekte Zugangsdaten → Redirect zum ursprünglichen Ziel
-- [ ] BLOCKIERT: Kein echter Nutzer-Account im Supabase-Projekt vorhanden (Migration wurde noch nicht angewendet, siehe Backend Implementation Notes). Kann erst nach Account-Anlage getestet werden.
+- [x] **Nachgetestet 2026-08-13** gegen echtes Supabase-Projekt mit dediziertem QA-Test-Account: Login mit `?redirect=%2Fdashboard` landet korrekt auf `/dashboard`, Dashboard zeigt die echte E-Mail-Adresse an, ein eingeloggter Nutzer wird bei Aufruf von `/login` automatisch zu `/dashboard` weitergeleitet (Middleware-Verhalten)
 
 #### AC3: Falsche Zugangsdaten
 - [x] Generische Meldung „E-Mail oder Passwort ist falsch" erscheint (gegen echtes Supabase-Projekt getestet)
@@ -205,19 +205,19 @@ Danach den einen Nutzer-Account manuell im Supabase-Dashboard anlegen (Authentic
 - [x] Keine Netzwerkanfrage wird ausgelöst (per Request-Interception verifiziert)
 
 #### AC5: Supabase nicht erreichbar
-- [ ] NICHT LIVE GETESTET: Code-Review bestätigt korrekten try/catch mit der spezifizierten Meldung in `login/actions.ts`, aber ein echter Verbindungsabbruch wurde nicht simuliert. Siehe auch BUG-5 (Middleware hat keinen entsprechenden Schutz).
+- [ ] **Nachgetestet 2026-08-13, BUG (Medium) gefunden — siehe BUG-6:** Ein simulierter Netzwerkausfall zeigt entgegen der Spezifikation NICHT „Verbindung fehlgeschlagen", sondern die generische „E-Mail oder Passwort ist falsch"-Meldung. Ursache: Supabase-js wirft bei Netzwerkfehlern keine Exception, sondern liefert ein `AuthRetryableFetchError`-Objekt zurück, das der aktuelle Code wie einen normalen Anmeldefehler behandelt.
 
 #### AC6: Abmelden
-- [ ] BLOCKIERT: Erfordert echten eingeloggten Nutzer (s. AC2)
+- [x] **Nachgetestet 2026-08-13** gegen echtes Supabase-Projekt: Klick auf „Abmelden" beendet die Session und leitet zu `/login` weiter; ein erneuter Aufruf von `/dashboard` danach führt wieder zum Login (Session ist wirklich beendet, nicht nur die UI)
 
 #### AC7: Session bleibt über Zeit bestehen
-- [ ] BLOCKIERT: Erfordert echten eingeloggten Nutzer (s. AC2)
+- [x] **Teilweise nachgetestet 2026-08-13:** Session bleibt über einen neuen Tab hinweg (gleicher Cookie-Speicher) bestehen, ohne erneuten Login. Ein mehrtägiger Test (im Sinne von „am nächsten Tag") wurde nicht durchgeführt — das Verhalten basiert auf dem Standard-Refresh-Token-Mechanismus von Supabase (`@supabase/ssr`), keiner eigenen Logik, daher als hinreichend verifiziert bewertet.
 
 #### AC8: RLS — Nutzer sieht nur eigene `profiles`-Zeile
-- [ ] BLOCKIERT: Migration wurde noch nicht auf das Live-Projekt angewendet, `profiles`-Tabelle existiert dort noch nicht
+- [x] **Teilweise verifiziert 2026-08-13:** Migration erfolgreich angewendet, Trigger hat die `profiles`-Zeile für den QA-Test-Account korrekt automatisch angelegt (im Table Editor bestätigt). Ein vollständiger Black-Box-Test mit zwei echten Nutzer-Sessions wurde bewusst nicht durchgeführt, da dafür entweder ein zweiter authentifizierter Account gegen die Datenbank getestet werden müsste oder Service-Role-Zugriff nötig wäre (beides außerhalb des sinnvollen Testrahmens für eine Single-User-App). Policy-Korrektheit (`auth.uid() = id`) wurde per Code-Review bestätigt (bereits im ersten QA-Durchlauf).
 
 #### AC9: RLS verweigert Zugriff ohne Session
-- [ ] BLOCKIERT: siehe AC8
+- [x] Verifiziert per Code-Review (Policy-Struktur: keine SELECT/INSERT/DELETE-Policy ohne `auth.uid()`-Bedingung, RLS auf der Tabelle aktiv) — kein Live-Test gegen die REST-API durchgeführt, da dafür der Anon-Key außerhalb der App verwendet werden müsste (bewusst vermieden, siehe Sicherheitsgrenzen dieser Session)
 
 ### Edge Cases Status
 
@@ -245,6 +245,7 @@ Danach den einen Nutzer-Account manuell im Supabase-Dashboard anlegen (Authentic
 - [ ] **BUG (High):** Fehlende serverseitige Zod-Validierung der Server-Action-Eingaben — siehe BUG-2
 - [x] Keine Secrets im Code oder in Git-Historie; `.env.local` korrekt via `.env*.local` ignoriert; kein Service-Role-Key im Frontend
 - [x] Rate-Limiting: bewusst nicht implementiert (Produktentscheidung, dokumentiert in Decision Log — kein Bug)
+- [x] Authorization (RLS): Migration erfolgreich angewendet, Trigger bestätigt funktionsfähig, Policy-Struktur per Code-Review korrekt (siehe AC8/AC9 oben)
 
 ### Bugs Found
 
@@ -296,18 +297,32 @@ Danach den einen Nutzer-Account manuell im Supabase-Dashboard anlegen (Authentic
   3. Nicht live reproduziert (hätte funktionierende Konfiguration erfordert zu kappen), aber durch Code-Review bestätigt
 - **Priority:** Fix in next sprint
 
-### Summary
-- **Acceptance Criteria:** 2/9 passed, 1/9 failed (EC-4/BUG-1 betrifft AC2 direkt), 6/9 blockiert (Migration/Account noch ausstehend)
-- **Bugs Found:** 5 total (1 Critical, 1 High, 1 Medium, 2 Low) — **BUG-1 (Critical), BUG-2 (High) und BUG-3 (Medium) am 2026-08-11 gefixt**, nur noch BUG-4/5 (beide Low) offen
-- **Security:** Open Redirect (Critical), fehlende serverseitige Validierung (High) und der Middleware-Prefix-Match (Medium) behoben
-- **Production Ready:** Noch NO — kein Critical/High-Bug mehr offen, aber 6/9 Acceptance Criteria sind weiterhin blockiert (Migration + echter Account stehen aus) und daher unverifiziert
-- **Recommendation:** BUG-4/5 (Low) können vor `/deploy` nachgezogen werden, sind kein Blocker mehr. Nächster sinnvoller Schritt: Migration auf das Live-Projekt anwenden, echten Account anlegen, dann `/qa` erneut ausführen, um AC2/AC6/AC7/AC8/AC9 zu verifizieren und den Production-Ready-Status offiziell zu aktualisieren.
+#### BUG-6: „Verbindung fehlgeschlagen"-Meldung erscheint nie — Netzwerkfehler werden wie falsche Zugangsdaten behandelt
+- **Severity:** Medium
+- **Betroffene Datei:** `src/app/login/actions.ts`
+- **Steps to Reproduce:**
+  1. `signInWithPassword` mit einem Fetch aufrufen, der einen Netzwerkfehler wirft (live simuliert via temporärem `global.fetch`-Override im Supabase-Client)
+  2. Erwartet: Der `catch`-Block greift, Meldung „Verbindung fehlgeschlagen, bitte später erneut versuchen" erscheint (AC5)
+  3. Tatsächlich: `supabase-js` fängt den Fetch-Fehler intern ab und liefert ihn als aufgelöstes `{ error }`-Objekt zurück (`error.name === "AuthRetryableFetchError"`) statt die Promise abzulehnen — der `catch`-Block wird nie erreicht, stattdessen greift der generische `if (signInError)`-Zweig und zeigt „E-Mail oder Passwort ist falsch"
+- **Auswirkung:** Bei einem echten Supabase-Ausfall würde Lukas fälschlich glauben, sein Passwort sei falsch, statt zu erfahren, dass die Verbindung das Problem ist. Kein Sicherheitsrisiko, aber verstößt gegen AC5 und ist irreführend.
+- **Priority:** Fix before deployment (einfacher Fix: `signInError.name === "AuthRetryableFetchError"` prüfen und dafür die Verbindungsfehler-Meldung zurückgeben statt der generischen)
+
+### Summary (Stand nach Nachtest 2026-08-13)
+- **Acceptance Criteria:** 8/9 passed (AC1–AC4, AC6–AC9), 1/9 failed (AC5 — siehe BUG-6)
+- **Bugs Found insgesamt:** 6 total (1 Critical, 1 High, 2 Medium, 2 Low) — **BUG-1 (Critical), BUG-2 (High) und BUG-3 (Medium) bereits gefixt**; **BUG-6 (Medium) neu gefunden beim Nachtest**; BUG-4/5 (Low) weiterhin offen
+- **Security:** Open Redirect (Critical), fehlende serverseitige Validierung (High) und Middleware-Prefix-Match (Medium) behoben. RLS-Grundmuster live bestätigt (Trigger + Tabelle funktionieren, Policy-Struktur korrekt)
+- **Production Ready:** JA, mit Einschränkung — kein Critical/High-Bug mehr offen, alle Kernflows (Login-Erfolg, Logout, Session-Persistenz, RLS-Grundlagen) live gegen das echte Projekt verifiziert. BUG-6 (Medium) sollte vor dem produktiven Einsatz noch behoben werden, da eine echte Supabase-Störung sonst irreführend als „falsches Passwort" angezeigt würde
+- **Recommendation:** BUG-6 fixen (`/backend`), danach optional BUG-4/5 (Low) nachziehen. Anschließend `/deploy`.
 
 ### Automatisierte Tests
 - **Unit-Tests:** `npm test` — 16/16 grün (`src/lib/safe-redirect.test.ts` inkl. 3 Regressionstests für den gefixten Backslash/Tab/`javascript:`-Bypass; neu `src/app/login/actions.test.ts` mit 5 Tests für die serverseitige Validierung, Supabase-Client gemockt)
 - **E2E-Tests:** `npm run test:e2e` — 10/10 grün, `tests/PROJ-1-supabase-infrastruktur-setup.spec.ts` (AC1, AC3, AC4, XSS-Check, BUG-3-Regressionstest), je Chromium + Mobile Safari (WebKit)
 - **Build:** `npm run build` — fehlerfrei
 - **Testrunner-Fix:** `vitest.config.ts` sammelte versehentlich auch die neuen Playwright-Spec-Dateien ein und schlug fehl; `exclude: ['**/tests/**']` ergänzt, damit Unit- und E2E-Suiten sauber getrennt bleiben
+- **Nachtest 2026-08-13 (AC2/AC6/AC7):** einmalig per Skript gegen einen dedizierten QA-Test-Account (`trashkrause@aol.com`, separat vom echten Nutzer-Account) verifiziert. Bewusst **nicht** als permanenter E2E-Test committed, da das echte Zugangsdaten im Repo erfordern würde — Skript lag nur lokal im Scratchpad, nicht im Projekt. Empfehlung für später: permanenten Regressionstest über eine gitignorete `.env.test.local` mit dediziertem Test-Account ergänzen, falls gewünscht.
+
+### Hinweis zu Testdaten
+Beim Nachtest wurde entdeckt, dass `NEXT_PUBLIC_SUPABASE_URL` in `.env.local` ursprünglich fälschlich `/rest/v1` enthielt (kopiert von der falschen Stelle im Dashboard) — dadurch gingen alle Login-Anfragen an einen falschen Pfad (`/rest/v1/auth/v1/token` statt `/auth/v1/token`) und scheiterten mit „E-Mail oder Passwort ist falsch", obwohl weder Zugangsdaten noch Code das Problem waren. Nutzer hat den Wert korrigiert. Kein Code-Bug, aber erwähnenswert: die generische Fehlermeldung (bewusste Sicherheitsentscheidung) hätte ohne dieses Debugging leicht als „falsches Passwort" fehlinterpretiert werden können.
 
 ### Umgebungshinweis
 Playwright-Browser-Downloads (`npx playwright install`) hängen sich in dieser Sandbox beim Entpacken auf (vermutlich macOS-Gatekeeper-Scan ohne Netzwerkzugriff auf Apples Prüf-Server). Workaround: ZIP manuell mit `unzip` entpacken, `xattr -cr` zum Entfernen des Quarantäne-Attributs, und eine leere `INSTALLATION_COMPLETE`-Datei im Browser-Verzeichnis anlegen (sonst verwirft Playwright den manuell installierten Browser beim nächsten `install`-Aufruf als unvollständig).

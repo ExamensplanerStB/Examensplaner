@@ -1,6 +1,6 @@
 # PROJ-1: Supabase-Infrastruktur-Setup
 
-## Status: In Review
+## Status: Approved
 **Created:** 2026-08-03
 **Last Updated:** 2026-08-13
 
@@ -205,7 +205,7 @@ Danach den einen Nutzer-Account manuell im Supabase-Dashboard anlegen (Authentic
 - [x] Keine Netzwerkanfrage wird ausgelöst (per Request-Interception verifiziert)
 
 #### AC5: Supabase nicht erreichbar
-- [ ] **Nachgetestet 2026-08-13, BUG (Medium) gefunden — siehe BUG-6:** Ein simulierter Netzwerkausfall zeigt entgegen der Spezifikation NICHT „Verbindung fehlgeschlagen", sondern die generische „E-Mail oder Passwort ist falsch"-Meldung. Ursache: Supabase-js wirft bei Netzwerkfehlern keine Exception, sondern liefert ein `AuthRetryableFetchError`-Objekt zurück, das der aktuelle Code wie einen normalen Anmeldefehler behandelt.
+- [x] **Nachgetestet 2026-08-13, BUG-6 gefunden und gefixt:** Ein simulierter Netzwerkausfall zeigte entgegen der Spezifikation zunächst NICHT „Verbindung fehlgeschlagen", sondern die generische „E-Mail oder Passwort ist falsch"-Meldung (siehe BUG-6 für Ursache und Fix). Fix per Unit-Test mit echter `AuthRetryableFetchError`-Instanz verifiziert (kein erneuter Live-Browser-Test mit simuliertem Netzwerkausfall nach dem Fix, da die Ursache bereits eindeutig auf Objekt-Ebene reproduziert und behoben wurde).
 
 #### AC6: Abmelden
 - [x] **Nachgetestet 2026-08-13** gegen echtes Supabase-Projekt: Klick auf „Abmelden" beendet die Session und leitet zu `/login` weiter; ein erneuter Aufruf von `/dashboard` danach führt wieder zum Login (Session ist wirklich beendet, nicht nur die UI)
@@ -306,16 +306,17 @@ Danach den einen Nutzer-Account manuell im Supabase-Dashboard anlegen (Authentic
   3. Tatsächlich: `supabase-js` fängt den Fetch-Fehler intern ab und liefert ihn als aufgelöstes `{ error }`-Objekt zurück (`error.name === "AuthRetryableFetchError"`) statt die Promise abzulehnen — der `catch`-Block wird nie erreicht, stattdessen greift der generische `if (signInError)`-Zweig und zeigt „E-Mail oder Passwort ist falsch"
 - **Auswirkung:** Bei einem echten Supabase-Ausfall würde Lukas fälschlich glauben, sein Passwort sei falsch, statt zu erfahren, dass die Verbindung das Problem ist. Kein Sicherheitsrisiko, aber verstößt gegen AC5 und ist irreführend.
 - **Priority:** Fix before deployment (einfacher Fix: `signInError.name === "AuthRetryableFetchError"` prüfen und dafür die Verbindungsfehler-Meldung zurückgeben statt der generischen)
+- **Status: FIXED (2026-08-13)** — `login()` prüft `signInError` jetzt zusätzlich mit dem offiziellen Type-Guard `isAuthRetryableFetchError` aus `@supabase/supabase-js` (statt eine eigene Zeichenkette auf `.name` zu vergleichen) und gibt in diesem Fall die Verbindungsfehler-Meldung zurück statt der generischen. Neuer Test in `src/app/login/actions.test.ts` konstruiert eine echte `AuthRetryableFetchError`-Instanz und verifiziert die korrekte Meldung. `npm test`: 17/17 grün, `npm run build` und `npm run test:e2e` (10/10) weiterhin grün. Echter Login/Logout-Flow gegen den QA-Test-Account erneut bestätigt (keine Regression).
 
-### Summary (Stand nach Nachtest 2026-08-13)
-- **Acceptance Criteria:** 8/9 passed (AC1–AC4, AC6–AC9), 1/9 failed (AC5 — siehe BUG-6)
-- **Bugs Found insgesamt:** 6 total (1 Critical, 1 High, 2 Medium, 2 Low) — **BUG-1 (Critical), BUG-2 (High) und BUG-3 (Medium) bereits gefixt**; **BUG-6 (Medium) neu gefunden beim Nachtest**; BUG-4/5 (Low) weiterhin offen
-- **Security:** Open Redirect (Critical), fehlende serverseitige Validierung (High) und Middleware-Prefix-Match (Medium) behoben. RLS-Grundmuster live bestätigt (Trigger + Tabelle funktionieren, Policy-Struktur korrekt)
-- **Production Ready:** JA, mit Einschränkung — kein Critical/High-Bug mehr offen, alle Kernflows (Login-Erfolg, Logout, Session-Persistenz, RLS-Grundlagen) live gegen das echte Projekt verifiziert. BUG-6 (Medium) sollte vor dem produktiven Einsatz noch behoben werden, da eine echte Supabase-Störung sonst irreführend als „falsches Passwort" angezeigt würde
-- **Recommendation:** BUG-6 fixen (`/backend`), danach optional BUG-4/5 (Low) nachziehen. Anschließend `/deploy`.
+### Summary (Stand nach BUG-6-Fix 2026-08-13)
+- **Acceptance Criteria:** 9/9 passed (AC1–AC9 alle grün)
+- **Bugs Found insgesamt:** 6 total (1 Critical, 1 High, 2 Medium, 2 Low) — **BUG-1, BUG-2, BUG-3 und BUG-6 gefixt**; nur noch **BUG-4/5 (beide Low)** offen
+- **Security:** Open Redirect (Critical), fehlende serverseitige Validierung (High), Middleware-Prefix-Match (Medium) und irreführende Fehlermeldung bei Verbindungsproblemen (Medium) behoben. RLS-Grundmuster live bestätigt (Trigger + Tabelle funktionieren, Policy-Struktur korrekt)
+- **Production Ready:** JA — kein Critical/High/Medium-Bug mehr offen, alle 9 Acceptance Criteria live gegen das echte Projekt verifiziert
+- **Recommendation:** BUG-4/5 (Low) sind kein Blocker, können vor oder nach `/deploy` nachgezogen werden. Feature kann deployed werden.
 
 ### Automatisierte Tests
-- **Unit-Tests:** `npm test` — 16/16 grün (`src/lib/safe-redirect.test.ts` inkl. 3 Regressionstests für den gefixten Backslash/Tab/`javascript:`-Bypass; neu `src/app/login/actions.test.ts` mit 5 Tests für die serverseitige Validierung, Supabase-Client gemockt)
+- **Unit-Tests:** `npm test` — 17/17 grün (`src/lib/safe-redirect.test.ts` inkl. 3 Regressionstests für den gefixten Backslash/Tab/`javascript:`-Bypass; `src/app/login/actions.test.ts` mit 6 Tests für serverseitige Validierung + BUG-6-Regressionstest, Supabase-Client gemockt)
 - **E2E-Tests:** `npm run test:e2e` — 10/10 grün, `tests/PROJ-1-supabase-infrastruktur-setup.spec.ts` (AC1, AC3, AC4, XSS-Check, BUG-3-Regressionstest), je Chromium + Mobile Safari (WebKit)
 - **Build:** `npm run build` — fehlerfrei
 - **Testrunner-Fix:** `vitest.config.ts` sammelte versehentlich auch die neuen Playwright-Spec-Dateien ein und schlug fehl; `exclude: ['**/tests/**']` ergänzt, damit Unit- und E2E-Suiten sauber getrennt bleiben

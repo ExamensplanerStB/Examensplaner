@@ -1,3 +1,4 @@
+import { AuthRetryableFetchError } from "@supabase/supabase-js";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const signInWithPassword = vi.fn();
@@ -56,6 +57,21 @@ describe("login server action", () => {
       password: "geheim123",
     });
     expect(result).toEqual({ error: "E-Mail oder Passwort ist falsch" });
+  });
+
+  it("zeigt die Verbindungsfehler-Meldung bei einem AuthRetryableFetchError statt der generischen Meldung (BUG-6)", async () => {
+    signInWithPassword.mockResolvedValue({
+      error: new AuthRetryableFetchError("Service temporarily unavailable", 0),
+    });
+
+    const result = await login(
+      { email: "test@example.com", password: "geheim123" },
+      "/dashboard"
+    );
+
+    expect(result).toEqual({
+      error: "Verbindung fehlgeschlagen, bitte später erneut versuchen",
+    });
   });
 
   it("leitet bei Erfolg zum validierten Redirect-Ziel weiter", async () => {

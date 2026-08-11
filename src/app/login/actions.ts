@@ -1,10 +1,13 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { isAuthRetryableFetchError } from "@supabase/supabase-js";
 
 import { createClient } from "@/lib/supabase/server";
 import { isSafeRedirectTarget } from "@/lib/safe-redirect";
 import { loginSchema, type LoginFormValues } from "@/lib/schemas/login";
+
+const CONNECTION_ERROR = "Verbindung fehlgeschlagen, bitte später erneut versuchen";
 
 export type LoginResult = { error: string };
 
@@ -26,10 +29,13 @@ export async function login(
       password: parsed.data.password,
     }));
   } catch {
-    return { error: "Verbindung fehlgeschlagen, bitte später erneut versuchen" };
+    return { error: CONNECTION_ERROR };
   }
 
   if (signInError) {
+    if (isAuthRetryableFetchError(signInError)) {
+      return { error: CONNECTION_ERROR };
+    }
     return { error: "E-Mail oder Passwort ist falsch" };
   }
 

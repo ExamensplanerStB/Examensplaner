@@ -34,7 +34,7 @@ insert into public.faecher (id, kuerzel, name, klausurtag) values
 on conflict (id) do nothing;
 
 create table if not exists public.themen (
-  id uuid primary key default uuid_generate_v4(),
+  id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,
   fach_id text not null references public.faecher(id),
   name text not null check (char_length(btrim(name)) > 0 and char_length(name) <= 100),

@@ -1,7 +1,29 @@
 import { ThemenManager } from "@/components/themen/themen-manager";
-import { KLAUSURTAGE } from "@/lib/klausurtage";
+import { groupFaecherByKlausurtag, type Fach, type Thema } from "@/lib/klausurtage";
+import { createClient } from "@/lib/supabase/server";
 
-export default function ThemenPage() {
+export default async function ThemenPage() {
+  const supabase = await createClient();
+
+  const [{ data: faecher }, { data: themen }] = await Promise.all([
+    supabase
+      .from("faecher")
+      .select("id, kuerzel, name, klausurtag")
+      .order("name"),
+    supabase
+      .from("themen")
+      .select("id, fach_id, name, klausurrelevanz")
+      .order("name"),
+  ]);
+
+  const klausurtage = groupFaecherByKlausurtag((faecher ?? []) as Fach[]);
+  const initialThemen: Thema[] = (themen ?? []).map((row) => ({
+    id: row.id,
+    fachId: row.fach_id,
+    name: row.name,
+    klausurrelevanz: row.klausurrelevanz,
+  }));
+
   return (
     <main className="min-h-screen bg-background p-4 sm:p-8">
       <div className="mx-auto max-w-4xl space-y-8">
@@ -15,7 +37,7 @@ export default function ThemenPage() {
             durch unterschiedliche Schreibweisen.
           </p>
         </header>
-        <ThemenManager klausurtage={KLAUSURTAGE} />
+        <ThemenManager klausurtage={klausurtage} initialThemen={initialThemen} />
       </div>
     </main>
   );

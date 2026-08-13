@@ -206,6 +206,28 @@ und über Geräte hinweg synchron.
 
 **Bekannte vorbestehende Tooling-Lücke (nicht PROJ-2-spezifisch, siehe auch PROJ-1):** `npm run lint` schlägt weiterhin fehl (fehlendes `eslint.config.js` für Next.js 16). `npm run build` und `npm test` (17/17) laufen fehlerfrei durch.
 
+## Backend Implementation Notes (Backend Developer)
+
+**Umgesetzt (2026-08-13):**
+- Migration `supabase/migrations/20260813211609_create_themenkatalog.sql`: `faecher`-Tabelle (11 Fächer, 3 Klausurtage, per Migration befüllt; RLS erlaubt nur SELECT für eingeloggte Nutzer, kein Insert/Update/Delete) und `themen`-Tabelle (RLS-Muster 1:1 aus PROJ-1: `auth.uid() = user_id` für SELECT/INSERT/UPDATE/DELETE, UPDATE zusätzlich mit `WITH CHECK`, damit `user_id` nicht per direktem API-Aufruf umgebogen werden kann). Eindeutigkeits-Index auf `(user_id, fach_id, lower(btrim(name)))` erzwingt die Duplikatsprüfung pro Fach auf Datenbankebene (nicht nur im Formular). Check-Constraints für Namenslänge (1–100 Zeichen, getrimmt) und Klausurrelevanz (`hoch`/`mittel`/`niedrig`)
+- `src/app/themen/actions.ts`: Server Actions `addThema`, `renameThema`, `changeKlausurrelevanz`, `deleteThema` — Zod-Validierung vor jedem Supabase-Aufruf, Unique-Constraint-Verletzung (Postgres-Code `23505`) wird in eine sprechende Fehlermeldung mit echtem Fachnamen übersetzt (kleiner Folge-Query auf `faecher`), alle sonstigen Fehler (inkl. Netzwerkfehler) laufen auf die einheitliche „Verbindung fehlgeschlagen"-Meldung (AC15), `revalidatePath("/themen")` nach jeder erfolgreichen Mutation
+- `src/app/themen/page.tsx`: jetzt ein async Server Component, lädt Fächer + eigene Themen direkt aus Supabase (RLS filtert `themen` automatisch auf den eingeloggten Nutzer) — keine Platzhalterdaten mehr
+- `src/lib/klausurtage.ts`: Platzhalter-Konstante `KLAUSURTAGE` entfernt, durch `groupFaecherByKlausurtag()` ersetzt (gruppiert die aus der DB geladenen Fächer nach den 3 festen, bereits verifizierten Klausurtag-Titeln)
+- `ThemenManager`/`NeuesThemaForm`/`ThemaChip` auf die echten Server Actions umgestellt: Hinzufügen zeigt Spinner + deaktivierten Button während der Anfrage, Umbenennen/Klausurrelevanz-Änderung zeigen Fehler inline am Chip, Löschen zeigt Fehler im Bestätigungsdialog (Dialog bleibt bei Fehler offen, statt den vorherigen Zustand zu verlieren)
+- 24 neue Vitest-Tests (`src/app/themen/actions.test.ts`, gemockter Supabase-Client nach dem Muster aus `login/actions.test.ts`): Validierung ohne Supabase-Aufruf, Erfolgsfall, Duplikat-Fehlermeldung mit Fachnamen, genereller Verbindungsfehler — für jede der vier Server Actions
+
+**Migration noch nicht auf das Live-Projekt angewendet:** wie schon in PROJ-1 gibt es in dieser Sandbox keinen Zugriff auf Supabase-Projekt-Ref/DB-Passwort. Nutzer wendet die Migration selbst an:
+```
+npx supabase db push
+```
+Danach ist `/themen` mit echten, persistenten Daten nutzbar.
+
+**Getestet:**
+- `npm run build` und `npm test` (33/33, davon 24 neue Server-Action-Tests) laufen fehlerfrei durch
+- Kein Live-Browser-Test möglich, da `faecher`/`themen` erst nach `supabase db push` existieren — Live-Verifikation gegen echte Daten ist Teil von `/qa` (analog PROJ-1, das dort mit einem dedizierten QA-Test-Account gegen das Live-Projekt nachgetestet hat)
+
+**Bekannte vorbestehende Tooling-Lücke (nicht PROJ-2-spezifisch):** `npm run lint` weiterhin ohne Wirkung (siehe PROJ-1/Frontend-Notiz zu `eslint.config.js`).
+
 ## QA Test Results
 _To be added by /qa_
 

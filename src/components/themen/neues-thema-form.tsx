@@ -1,7 +1,9 @@
 "use client";
 
+import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { Loader2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -30,17 +32,21 @@ import {
 
 interface NeuesThemaFormProps {
   klausurtage: Klausurtag[];
-  onAdd: (fachId: string, name: string) => string | null;
+  onAdd: (fachId: string, name: string) => Promise<string | null>;
 }
 
 export function NeuesThemaForm({ klausurtage, onAdd }: NeuesThemaFormProps) {
+  const [isPending, setIsPending] = useState(false);
+
   const form = useForm<NeuesThemaFormValues>({
     resolver: zodResolver(neuesThemaSchema),
     defaultValues: { fachId: "", name: "" },
   });
 
-  function onSubmit(values: NeuesThemaFormValues) {
-    const error = onAdd(values.fachId, values.name);
+  async function onSubmit(values: NeuesThemaFormValues) {
+    setIsPending(true);
+    const error = await onAdd(values.fachId, values.name);
+    setIsPending(false);
     if (error) {
       form.setError("name", { type: "manual", message: error });
       return;
@@ -93,7 +99,12 @@ export function NeuesThemaForm({ klausurtage, onAdd }: NeuesThemaFormProps) {
             <FormItem>
               <FormLabel>Neues Thema</FormLabel>
               <FormControl>
-                <Input placeholder="Themenname …" maxLength={100} {...field} />
+                <Input
+                  placeholder="Themenname …"
+                  maxLength={100}
+                  disabled={isPending}
+                  {...field}
+                />
               </FormControl>
               <FormMessage />
             </FormItem>
@@ -101,8 +112,11 @@ export function NeuesThemaForm({ klausurtage, onAdd }: NeuesThemaFormProps) {
         />
         <Button
           type="submit"
-          disabled={!form.watch("name")?.trim() || !form.watch("fachId")}
+          disabled={
+            isPending || !form.watch("name")?.trim() || !form.watch("fachId")
+          }
         >
+          {isPending && <Loader2 className="h-4 w-4 animate-spin" />}
           Hinzufügen
         </Button>
       </form>

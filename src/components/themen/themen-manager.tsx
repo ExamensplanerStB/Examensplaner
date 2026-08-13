@@ -4,7 +4,6 @@ import { useState } from "react";
 
 import {
   AlertDialog,
-  AlertDialogAction,
   AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
@@ -13,78 +12,73 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import type { Klausurrelevanz, Klausurtag, Thema } from "@/lib/klausurtage";
 
+import { addThema, changeKlausurrelevanz, deleteThema, renameThema } from "@/app/themen/actions";
 import { NeuesThemaForm } from "./neues-thema-form";
 import { ThemaChip } from "./thema-chip";
 
 interface ThemenManagerProps {
   klausurtage: Klausurtag[];
+  initialThemen: Thema[];
 }
 
-export function ThemenManager({ klausurtage }: ThemenManagerProps) {
-  const [themen, setThemen] = useState<Thema[]>([]);
+export function ThemenManager({ klausurtage, initialThemen }: ThemenManagerProps) {
+  const [themen, setThemen] = useState<Thema[]>(initialThemen);
   const [pendingDelete, setPendingDelete] = useState<Thema | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
-  const faecherById = new Map(
-    klausurtage.flatMap((k) => k.faecher).map((fach) => [fach.id, fach])
-  );
-
-  function findDuplicate(fachId: string, name: string, excludeId?: string) {
-    const normalized = name.trim().toLowerCase();
-    return themen.find(
-      (t) =>
-        t.fachId === fachId &&
-        t.id !== excludeId &&
-        t.name.trim().toLowerCase() === normalized
-    );
-  }
-
-  function addThema(fachId: string, name: string): string | null {
-    const duplicate = findDuplicate(fachId, name);
-    if (duplicate) {
-      return `Dieses Thema existiert bereits in ${faecherById.get(fachId)?.name ?? "diesem Fach"}`;
-    }
-    setThemen((prev) => [
-      ...prev,
-      {
-        id: crypto.randomUUID(),
-        fachId,
-        name: name.trim(),
-        klausurrelevanz: "mittel",
-      },
-    ]);
+  async function handleAdd(fachId: string, name: string): Promise<string | null> {
+    const result = await addThema(fachId, name);
+    if ("error" in result) return result.error;
+    setThemen((prev) => [...prev, result.thema]);
     return null;
   }
 
-  function renameThema(id: string, newName: string): string | null {
-    const thema = themen.find((t) => t.id === id);
-    if (!thema) return null;
-    const duplicate = findDuplicate(thema.fachId, newName, id);
-    if (duplicate) {
-      return `Dieses Thema existiert bereits in ${faecherById.get(thema.fachId)?.name ?? "diesem Fach"}`;
-    }
+  async function handleRename(id: string, newName: string): Promise<string | null> {
+    const result = await renameThema(id, newName);
+    if ("error" in result) return result.error;
     setThemen((prev) =>
       prev.map((t) => (t.id === id ? { ...t, name: newName.trim() } : t))
     );
     return null;
   }
 
-  function changeKlausurrelevanz(id: string, value: Klausurrelevanz) {
+  async function handleKlausurrelevanzChange(
+    id: string,
+    value: Klausurrelevanz
+  ): Promise<string | null> {
+    const result = await changeKlausurrelevanz(id, value);
+    if ("error" in result) return result.error;
     setThemen((prev) =>
       prev.map((t) => (t.id === id ? { ...t, klausurrelevanz: value } : t))
     );
+    return null;
   }
 
-  function confirmDelete() {
+  function requestDelete(thema: Thema) {
+    setDeleteError(null);
+    setPendingDelete(thema);
+  }
+
+  async function confirmDelete() {
     if (!pendingDelete) return;
+    setIsDeleting(true);
+    const result = await deleteThema(pendingDelete.id);
+    setIsDeleting(false);
+    if ("error" in result) {
+      setDeleteError(result.error);
+      return;
+    }
     setThemen((prev) => prev.filter((t) => t.id !== pendingDelete.id));
     setPendingDelete(null);
   }
 
   return (
     <div className="space-y-8">
-      <NeuesThemaForm klausurtage={klausurtage} onAdd={addThema} />
+      <NeuesThemaForm klausurtage={klausurtage} onAdd={handleAdd} />
 
       <div className="space-y-8">
         {klausurtage.map((klausurtag) => (
@@ -111,11 +105,11 @@ export function ThemenManager({ klausurtage }: ThemenManagerProps) {
                           <ThemaChip
                             key={thema.id}
                             thema={thema}
-                            onRename={(newName) => renameThema(thema.id, newName)}
+                            onRename={(newName) => handleRename(thema.id, newName)}
                             onKlausurrelevanzChange={(value) =>
-                              changeKlausurrelevanz(thema.id, value)
+                              handleKlausurrelevanzChange(thema.id, value)
                             }
-                            onDeleteRequest={() => setPendingDelete(thema)}
+                            onDeleteRequest={() => requestDelete(thema)}
                           />
                         ))}
                       </div>
@@ -131,7 +125,10 @@ export function ThemenManager({ klausurtage }: ThemenManagerProps) {
       <AlertDialog
         open={pendingDelete !== null}
         onOpenChange={(open) => {
-          if (!open) setPendingDelete(null);
+          if (!open) {
+            setPendingDelete(null);
+            setDeleteError(null);
+          }
         }}
       >
         <AlertDialogContent>
@@ -142,11 +139,21 @@ export function ThemenManager({ klausurtage }: ThemenManagerProps) {
               Aktion kann nicht rückgängig gemacht werden.
             </AlertDialogDescription>
           </AlertDialogHeader>
+          {deleteError && (
+            <p className="text-sm text-destructive" role="alert">
+              {deleteError}
+            </p>
+          )}
           <AlertDialogFooter>
-            <AlertDialogCancel>Abbrechen</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmDelete}>
+            <AlertDialogCancel disabled={isDeleting}>Abbrechen</AlertDialogCancel>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={confirmDelete}
+              disabled={isDeleting}
+            >
               Löschen
-            </AlertDialogAction>
+            </Button>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

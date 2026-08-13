@@ -28,8 +28,8 @@ const RELEVANZ_STYLES: Record<Klausurrelevanz, string> = {
 
 interface ThemaChipProps {
   thema: Thema;
-  onRename: (newName: string) => string | null;
-  onKlausurrelevanzChange: (value: Klausurrelevanz) => void;
+  onRename: (newName: string) => Promise<string | null>;
+  onKlausurrelevanzChange: (value: Klausurrelevanz) => Promise<string | null>;
   onDeleteRequest: () => void;
 }
 
@@ -42,6 +42,9 @@ export function ThemaChip({
   const [isEditing, setIsEditing] = useState(false);
   const [draftName, setDraftName] = useState(thema.name);
   const [error, setError] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [relevanzError, setRelevanzError] = useState<string | null>(null);
+  const [isRelevanzSaving, setIsRelevanzSaving] = useState(false);
 
   function startEdit() {
     setDraftName(thema.name);
@@ -54,19 +57,28 @@ export function ThemaChip({
     setError(null);
   }
 
-  function confirmEdit() {
+  async function confirmEdit() {
     const parsed = themaNameSchema.safeParse(draftName);
     if (!parsed.success) {
       setError(parsed.error.issues[0]?.message ?? "Ungültiger Themenname");
       return;
     }
-    const renameError = onRename(parsed.data);
+    setIsSaving(true);
+    const renameError = await onRename(parsed.data);
+    setIsSaving(false);
     if (renameError) {
       setError(renameError);
       return;
     }
     setIsEditing(false);
     setError(null);
+  }
+
+  async function handleKlausurrelevanzChange(value: Klausurrelevanz) {
+    setIsRelevanzSaving(true);
+    const relevanzErrorResult = await onKlausurrelevanzChange(value);
+    setIsRelevanzSaving(false);
+    setRelevanzError(relevanzErrorResult);
   }
 
   return (
@@ -78,6 +90,7 @@ export function ThemaChip({
               autoFocus
               value={draftName}
               maxLength={100}
+              disabled={isSaving}
               onChange={(e) => setDraftName(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === "Enter") {
@@ -97,6 +110,7 @@ export function ThemaChip({
               variant="ghost"
               className="h-7 w-7"
               onClick={confirmEdit}
+              disabled={isSaving}
               aria-label="Umbenennen bestätigen"
             >
               <Check className="h-3.5 w-3.5" />
@@ -107,6 +121,7 @@ export function ThemaChip({
               variant="ghost"
               className="h-7 w-7"
               onClick={cancelEdit}
+              disabled={isSaving}
               aria-label="Umbenennen abbrechen"
             >
               <X className="h-3.5 w-3.5" />
@@ -129,8 +144,9 @@ export function ThemaChip({
         <Select
           value={thema.klausurrelevanz}
           onValueChange={(value) =>
-            onKlausurrelevanzChange(value as Klausurrelevanz)
+            handleKlausurrelevanzChange(value as Klausurrelevanz)
           }
+          disabled={isRelevanzSaving}
         >
           <SelectTrigger
             className={cn(
@@ -162,6 +178,9 @@ export function ThemaChip({
         </Button>
       </div>
       {error && <p className="pl-3 text-xs text-destructive">{error}</p>}
+      {relevanzError && (
+        <p className="pl-3 text-xs text-destructive">{relevanzError}</p>
+      )}
     </div>
   );
 }

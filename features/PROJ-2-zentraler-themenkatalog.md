@@ -69,7 +69,7 @@
 - Performance: Laden der Themenübersicht < 300ms (analog Auth-Check-Vorgabe aus PROJ-1)
 
 ## Open Questions
-- [ ] Zeichenlimit für Themennamen — wird in `/architecture` festgelegt
+- [x] Zeichenlimit für Themennamen — in `/architecture` auf 100 Zeichen festgelegt (siehe Technical Decisions)
 
 ## Decision Log
 
@@ -92,12 +92,93 @@
 <!-- Added by /architecture -->
 | Decision | Rationale | Date |
 |----------|-----------|------|
+| Die 11 Fächer werden als eigene, feste Datenbanktabelle (`faecher`) angelegt statt im Anwendungscode hinterlegt | Ermöglicht künftigen Features (Wiederholungsplan PROJ-7, Kompetenzanalyse PROJ-8) sauberes Verknüpfen/Filtern nach Fach und Klausurtag direkt in der Datenbank; die Datenbank selbst stellt sicher, dass jedes Thema wirklich einem gültigen Fach zugeordnet ist, statt sich auf Code-Constants zu verlassen | 2026-08-13 |
+| Eindeutigkeit von Themennamen pro Fach (case-insensitive) wird als Datenbank-Regel erzwungen, nicht nur im Formular geprüft | Verhindert doppelte Themen zuverlässig, auch bei gleichzeitigen Anfragen — konsistent mit dem "keine Dopplungen"-Ziel aus der Spezifikation | 2026-08-13 |
+| Themenname ist auf 100 Zeichen begrenzt | Löst die offene Frage aus der Spezifikation; ausreichend für auch längere Themenbezeichnungen (Praxisbeispiele aus dem Prototyp liegen bei ca. 40 Zeichen), verhindert aber ausufernde Eingaben in der Chip-Darstellung | 2026-08-13 |
+| Alle Aktionen auf `/themen` (Hinzufügen, Umbenennen, Löschen, Klausurrelevanz ändern) laufen über Server Actions, keine eigenen API-Routen | Konsistent mit dem in PROJ-1 etablierten Muster (Login lief bereits über eine Server Action); Zugangsdaten/Mutationen werden serverseitig verarbeitet, kein Aufbau einer separaten REST-API nötig | 2026-08-13 |
+| RLS auf `themen` folgt exakt dem PROJ-1-Muster (`user_id = auth.uid()`); `faecher` ist für jeden eingeloggten Nutzer lesbar, aber ohne Schreibrechte für den Nutzer | Konsistent mit der bereits abgenommenen Sicherheitsarchitektur; `faecher` ist reine Referenzdatenquelle, keine persönlichen Nutzerdaten | 2026-08-13 |
+| Schema (Tabellen `faecher` + `themen`) und die Seed-Daten der 11 Fächer werden über eine versionierte Supabase-CLI-Migration angelegt | Gleiches Vorgehen wie bei der `profiles`-Tabelle in PROJ-1 — nachvollziehbare, im Repo versionierte Historie | 2026-08-13 |
+| Keine neuen npm-Pakete nötig — Formulare nutzen react-hook-form + Zod (aus PROJ-1), UI nutzt die bereits installierten shadcn/ui-Komponenten Select, AlertDialog, Badge, Skeleton | Alle benötigten Bausteine sind bereits im Projekt vorhanden; PRD-Vorgabe "shadcn/ui first" | 2026-08-13 |
+| Fach-zu-Klausurtag-Zuordnung der Seed-Daten (K1 Verfahrensrecht: AO/FGO/USt/BewG/ErbSt · K2 Ertragsteuern: ESt/KSt/GewSt/IntStR · K3 Bilanzsteuerrecht: Bilanz/UmwStR) per Web-Recherche gegen § 37 Abs. 3 StBerG, BStBK und Steuerberaterkammer München geprüft, nicht ungeprüft aus dem Prototyp übernommen | Gesetzestext definiert nur grobe Prüfungsgebiete, keine klausurscharfe Einzelfach-Zuordnung; bei Umwandlungssteuerrecht widersprachen sich Sekundärquellen (Tag 2 vs. Tag 3) — Nutzer hat als StB-Kandidat die Zuordnung zu Tag 3 (wie Prototyp) verbindlich bestätigt | 2026-08-13 |
 
 ---
 <!-- Sections below are added by subsequent skills -->
 
 ## Tech Design (Solution Architect)
-_To be added by /architecture_
+
+### Component Structure
+```
+/themen (geschützte Route — Zugriff nur eingeloggt, sonst Redirect zu /login,
+          gesichert durch die bestehende Middleware aus PROJ-1)
+└── Themenverwaltungs-Seite
+    ├── Seitentitel + Kurzbeschreibung
+    │
+    ├── Neues-Thema-Formular
+    │   ├── Fach-Auswahl (Dropdown, alle 11 Fächer)
+    │   ├── Themenname-Eingabefeld (max. 100 Zeichen)
+    │   └── "Hinzufügen"-Button (deaktiviert bei leerem/nur-Leerzeichen-Namen)
+    │
+    ├── Themenübersicht (gruppiert, analog Design-Prototyp)
+    │   └── Je Klausurtag (K1 Verfahrensrecht / K2 Ertragsteuern / K3 Bilanzsteuerrecht)
+    │       └── Je Fach im Klausurtag
+    │           ├── Fach-Titel
+    │           └── Themen-Liste als Chips (oder Hinweistext "Noch keine Themen")
+    │               └── Je Thema
+    │                   ├── Themenname (per Umbenennen-Aktion editierbar)
+    │                   ├── Klausurrelevanz-Auswahl (hoch/mittel/niedrig)
+    │                   └── Löschen-Aktion → öffnet Bestätigungsdialog
+    │
+    ├── Lösch-Bestätigungsdialog (Abbrechen / Löschen)
+    └── Lade-/Fehlerzustände (Skeleton beim initialen Laden, "Verbindung fehlgeschlagen"-Hinweis bei Netzwerkfehlern)
+```
+
+### Data Model (in plain language)
+```
+Tabelle "faecher" (feste Referenzdaten, 11 Zeilen, einmalig per Migration
+angelegt und befüllt, nicht über die UI editierbar):
+- id
+- name        → z.B. "Einkommensteuer"
+- kuerzel     → z.B. "ESt"
+- klausurtag  → 1, 2 oder 3 (Verfahrensrecht / Ertragsteuern / Bilanzsteuerrecht)
+
+Tabelle "themen" (vom Nutzer gepflegt):
+- id
+- fach_id          → verweist auf "faecher"
+- name              → max. 100 Zeichen
+- klausurrelevanz   → hoch / mittel / niedrig, Standard bei Neuanlage: mittel
+- user_id           → verweist auf den eingeloggten Nutzer (RLS-Muster aus PROJ-1)
+- created_at
+
+Eindeutigkeitsregel: Innerhalb desselben Fachs darf ein Themenname
+(Groß-/Kleinschreibung ignoriert) nur einmal vorkommen — von der
+Datenbank selbst erzwungen, nicht nur im Formular geprüft.
+
+Zugriffsregel (Row Level Security):
+- "themen": ein Nutzer sieht und bearbeitet ausschließlich eigene Themen
+  (exakt das Muster aus PROJ-1: user_id = eingeloggter Nutzer)
+- "faecher": für jeden eingeloggten Nutzer lesbar, vom Nutzer nicht
+  veränderbar (feste Referenzdaten)
+
+Wichtig für PROJ-3/4/5: Künftige Tabellen (Karteikarten, Übungsaufgaben,
+Probeklausuren) verweisen auf ein Thema über dessen "id", nicht über eine
+Kopie des Namens — dadurch wirkt sich ein Umbenennen automatisch überall
+aus, ohne dass diese Tabellen angefasst werden müssen.
+
+Gespeichert in: Supabase (PostgreSQL) — wie alle bisherigen Daten, zentral
+und über Geräte hinweg synchron.
+```
+
+### Tech Decisions (Reasoning)
+- **`faecher` als eigene Datenbanktabelle statt Code-Konstante:** erlaubt sauberes Verknüpfen/Filtern nach Fach und Klausurtag direkt in der Datenbank für künftige Features (Wiederholungsplan, Kompetenzanalyse), und die Datenbank erzwingt selbst, dass jedes Thema einem gültigen Fach zugeordnet ist.
+- **Eindeutigkeit auf Datenbankebene statt nur im Formular:** zuverlässiger Schutz vor Duplikaten, auch bei gleichzeitigen Anfragen.
+- **Server Actions statt eigener API-Routen:** konsistent mit dem bereits abgenommenen Muster aus PROJ-1 (Login-Formular); Mutationen laufen serverseitig, keine separate REST-API nötig.
+- **RLS-Muster 1:1 aus PROJ-1 übernommen:** etabliertes, bereits geprüftes Sicherheitsmuster, keine neue Logik nötig.
+- **Supabase-CLI-Migration für Schema + Seed-Daten:** gleiches, bereits bewährtes Vorgehen wie bei der `profiles`-Tabelle — nachvollziehbare Versionshistorie im Repo.
+- **Themen-ID als Referenzpunkt für künftige Hub-Tabellen:** technische Grundlage dafür, dass Umbenennen sich automatisch überall auswirkt (Anforderung aus der Spezifikation).
+
+### Dependencies
+- Keine neuen npm-Pakete — react-hook-form, Zod und die benötigten shadcn/ui-Komponenten (Select, AlertDialog, Badge, Skeleton, Input, Button) sind bereits im Projekt installiert
+- Supabase CLI (lokales Werkzeug, kein npm-Paket) — bereits aus PROJ-1 im Einsatz, für die neue Migration
 
 ## QA Test Results
 _To be added by /qa_

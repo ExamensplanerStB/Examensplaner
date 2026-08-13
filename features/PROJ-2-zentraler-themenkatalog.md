@@ -1,6 +1,6 @@
 # PROJ-2: Zentraler Themenkatalog
 
-## Status: Planned
+## Status: In Progress
 **Created:** 2026-08-13
 **Last Updated:** 2026-08-13
 
@@ -179,6 +179,32 @@ und über Geräte hinweg synchron.
 ### Dependencies
 - Keine neuen npm-Pakete — react-hook-form, Zod und die benötigten shadcn/ui-Komponenten (Select, AlertDialog, Badge, Skeleton, Input, Button) sind bereits im Projekt installiert
 - Supabase CLI (lokales Werkzeug, kein npm-Paket) — bereits aus PROJ-1 im Einsatz, für die neue Migration
+
+## Frontend Implementation Notes (Frontend Developer)
+
+**Umgesetzt (2026-08-13):**
+- `/themen` (`src/app/themen/page.tsx`): Seitentitel, Kurzbeschreibung, rendert `ThemenManager`
+- `src/components/themen/themen-manager.tsx`: hält den Themen-Zustand, Gruppierung nach Klausurtag → Fach, gemeinsamer Lösch-Bestätigungsdialog (shadcn `AlertDialog`)
+- `src/components/themen/neues-thema-form.tsx`: Fach-Auswahl (gruppiert nach K1/K2/K3, shadcn `Select`) + Themenname-Eingabe, react-hook-form + Zod (gleiches Muster wie `login-form.tsx` aus PROJ-1), „Hinzufügen" deaktiviert bei leerem Feld
+- `src/components/themen/thema-chip.tsx`: Chip mit Inline-Umbenennen (Stift-Icon → Eingabefeld, Enter/Escape), Klausurrelevanz-Auswahl (kompakter, farblich abgestufter `Select`: Hoch = gefüllt/primary, Mittel = secondary, Niedrig = outline — bewusst NICHT die Ampelfarben aus dem Design-System verwendet, da diese im Design-System für Kompetenzgrad reserviert sind und sonst mit PROJ-8 kollidieren würden), Löschen-Trigger
+- `src/lib/klausurtage.ts`: Platzhalter-Referenzdaten der 11 Fächer/3 Klausurtage (siehe Hinweis unten) + Typen (`Fach`, `Klausurtag`, `Thema`, `Klausurrelevanz`)
+- `src/lib/schemas/thema.ts`: Zod-Schema für Themenname (1–100 Zeichen, getrimmt) und das Neues-Thema-Formular
+- Duplikatsprüfung (case-insensitive, getrimmt, pro Fach) und Umbenennen-Kollisionsprüfung laufen bereits vollständig client-seitig gegen den lokalen Zustand
+- Alle im Frontend sinnvoll testbaren Acceptance Criteria demonstriert: gruppierte Übersicht, Leerer-Zustand pro Fach, Anlegen mit Standard-Klausurrelevanz „Mittel", Duplikat-Blockade pro Fach, gleicher Name in anderem Fach erlaubt, Umbenennen (ID/Klausurrelevanz bleiben unverändert), Umbenennen-Kollision blockiert, Klausurrelevanz ändern, Lösch-Dialog (Abbrechen erhält, Bestätigen entfernt), 100-Zeichen-Limit, „Hinzufügen" deaktiviert bei leerem Feld
+- AC1 (Redirect bei fehlender Session) ist bereits durch die bestehende Middleware aus PROJ-1 automatisch erfüllt, keine neue Logik nötig — per `curl` gegen den laufenden Dev-Server verifiziert: `GET /themen` ohne Session → `307` zu `/login?redirect=%2Fthemen`
+
+**Bewusst noch nicht umgesetzt (folgt in /backend):**
+- Komplett lokaler React-Zustand, keine echte Persistenz — Themen gehen bei Neuladen der Seite verloren; wird durch echte Supabase-Anbindung (Server Actions statt lokalem State) ersetzt
+- `faecher`- und `themen`-Tabellen, Migration, RLS existieren noch nicht — `src/lib/klausurtage.ts` ist ausdrücklich als Platzhalter markiert und wird ersetzt, sobald der Server Component die echten Fächer aus der Datenbank lädt
+- „Verbindung fehlgeschlagen"-Meldung (AC15) kann erst mit einem echten Supabase-Aufruf getestet werden
+- Lade-Skeleton ist noch nicht verdrahtet, da es noch keinen echten asynchronen Ladevorgang gibt (analog PROJ-1: Ladezustand war dort ebenfalls erst nach Backend-Anbindung sinnvoll testbar)
+- AC10 (Umbenennen wirkt sich auf bereits zugeordnete Karteikarten/Übungsaufgaben/Probeklausuren aus) kann erst getestet werden, sobald PROJ-3/4/5 existieren und per Fremdschlüssel auf `themen.id` referenzieren
+
+**Getestet im Browser (Playwright, headless Chromium):** Desktop (1440px), Tablet (768px), Mobile (375px). Golden Path (Fach wählen → Thema anlegen → Klausurrelevanz ändern → umbenennen) sowie Edge Cases (Duplikat im selben Fach blockiert, gleicher Name in anderem Fach erlaubt, Umbenennen-Kollision blockiert, Lösch-Dialog Abbrechen/Bestätigen, 100-Zeichen-Limit, leeres Formular) — alle wie erwartet, kein horizontales Overflow auf keiner Breite.
+
+**Hinweis zur Testmethode:** `/themen` ist bereits durch die bestehende Middleware aus PROJ-1 geschützt; ohne Test-Account wurde die Auth-Prüfung in `src/proxy.ts` für die Dauer des Browser-Tests lokal auskommentiert und danach vollständig zurückgesetzt (`git diff` vor dem Commit leer verifiziert) — kein Einfluss auf den committeten Code.
+
+**Bekannte vorbestehende Tooling-Lücke (nicht PROJ-2-spezifisch, siehe auch PROJ-1):** `npm run lint` schlägt weiterhin fehl (fehlendes `eslint.config.js` für Next.js 16). `npm run build` und `npm test` (17/17) laufen fehlerfrei durch.
 
 ## QA Test Results
 _To be added by /qa_

@@ -1,6 +1,6 @@
 # PROJ-2: Zentraler Themenkatalog
 
-## Status: In Progress
+## Status: Approved
 **Created:** 2026-08-13
 **Last Updated:** 2026-08-13
 
@@ -229,7 +229,119 @@ Danach ist `/themen` mit echten, persistenten Daten nutzbar.
 **Bekannte vorbestehende Tooling-Lücke (nicht PROJ-2-spezifisch):** `npm run lint` weiterhin ohne Wirkung (siehe PROJ-1/Frontend-Notiz zu `eslint.config.js`).
 
 ## QA Test Results
-_To be added by /qa_
+
+**Tested:** 2026-08-13
+**App URL:** http://localhost:3000 (Server Actions gegen das echte, verknüpfte Supabase-Live-Projekt)
+**Tester:** QA Engineer (AI)
+**Browser:** Chromium (Desktop 1440px, Tablet 768px, Mobile 375px), WebKit/Safari-Engine (Desktop + „Mobile Safari"/iPhone-13-Viewport im E2E-Lauf)
+**Test-Account:** dedizierter QA-Test-Account (vom Nutzer bereitgestellt, nicht der persönliche Produktiv-Account)
+
+### Migration — 1 Bug gefunden und sofort behoben
+Beim ersten `npx supabase db push` durch den Nutzer schlug die Migration fehl: `ERROR: function uuid_generate_v4() does not exist (SQLSTATE 42883)` — die `uuid-ossp`-Extension ist auf diesem Supabase-Projekt nicht aktiviert. Siehe BUG-1. Migration wurde transaktional zurückgerollt (kein Teilzustand in der DB), Fix angewendet, zweiter `db push`-Versuch lief erfolgreich durch (vom Nutzer bestätigt: `faecher` mit 11 Zeilen, `themen` leer angelegt).
+
+### Acceptance Criteria Status
+
+#### AC1: Redirect bei fehlender Session
+- [x] `/themen` ohne Session → Redirect zu `/login?redirect=%2Fthemen` (E2E-Test + live in allen 3 Engines verifiziert)
+
+#### AC2: Geladene Seite zeigt alle Klausurtage/Fächer/Themen inkl. Klausurrelevanz
+- [x] Live gegen echtes Supabase-Projekt: K1/K2/K3 mit allen 11 Fächern korrekt geladen und gruppiert (Chromium + WebKit)
+- [x] Klausurrelevanz wird korrekt aus der DB gelesen und angezeigt
+
+#### AC3: Leerer Zustand pro Fach
+- [x] „Noch keine Themen" erscheint korrekt für Fächer ohne Themen (live bestätigt beim frischen Test-Account)
+
+#### AC4: Neues Thema anlegen, Standard-Klausurrelevanz „Mittel"
+- [x] Live in Supabase angelegt (nicht nur Client-State) — verifiziert per Seiten-Reload, Thema und Klausurrelevanz „Mittel" blieben erhalten
+
+#### AC5: Duplikat im selben Fach blockiert
+- [x] Case-insensitive, getrimmt — DB-Unique-Constraint (Code `23505`) greift tatsächlich, Fehlermeldung „Dieses Thema existiert bereits in [Fach]" korrekt mit echtem Fachnamen
+
+#### AC6: „Hinzufügen" deaktiviert bei leerem Feld
+- [x] Bestätigt
+
+#### AC7: Gleicher Name in anderem Fach erlaubt
+- [x] Live bestätigt (Duplikatsprüfung ist korrekt pro Fach skaliert, nicht global)
+
+#### AC8: Klausurrelevanz ändern
+- [x] Änderung wird sofort gespeichert und übersteht einen Seiten-Reload (echte Persistenz)
+
+#### AC9: Umbenennen, ID/Klausurrelevanz bleiben unverändert
+- [x] Live bestätigt: Name geändert, Klausurrelevanz „Hoch" blieb nach dem Umbenennen erhalten
+
+#### AC10: Umbenennen wirkt sich auf zugeordnete Karteikarten/Übungsaufgaben/Probeklausuren aus
+- [ ] NICHT TESTBAR: PROJ-3/4/5 existieren noch nicht, keine Hub-Tabelle referenziert `themen.id`. Das zugrunde liegende Muster (Referenzierung über ID statt Namenskopie) ist gelegt; der eigentliche Verhaltens-Test folgt, sobald PROJ-3 existiert
+
+#### AC11: Umbenennen-Kollision blockiert
+- [x] Live bestätigt, DB-Constraint greift korrekt auch beim Update
+
+#### AC12–AC14: Lösch-Bestätigungsdialog (öffnen / abbrechen / bestätigen)
+- [x] Alle drei Zustände live bestätigt — Abbrechen erhält das Thema, Bestätigen entfernt es tatsächlich aus Supabase (nicht nur aus der UI)
+
+#### AC15: „Verbindung fehlgeschlagen"-Meldung bei Fehlschlag
+- [x] Verifiziert über die 8 Verbindungsfehler-Unit-Tests aus `/backend` (gemockter Supabase-Client: generischer Fehler UND fehlende Session → einheitliche Meldung, für alle vier Server Actions)
+- [ ] NICHT LIVE REPRODUZIERT: ein echter Netzwerkausfall zwischen Next.js-Server und Supabase lässt sich aus dem Browser heraus nicht auslösen (Server Actions laufen serverseitig) — bewusste Grenze, wie schon bei ähnlichen Fällen in PROJ-1
+
+#### AC16: RLS verweigert Zugriff ohne gültige Session
+- [x] App-seitig verifiziert: jede Server Action prüft `auth.getUser()` und bricht ohne Session ab, bevor überhaupt eine Query läuft (Unit-Test „zeigt Verbindungsfehler wenn kein Nutzer in der Session ist")
+- [x] Policy-Korrektheit der Migration per Code-Review bestätigt: `themen` hat für SELECT/INSERT/UPDATE/DELETE ausschließlich `auth.uid() = user_id`-Policies, `faecher` hat keine Schreib-Policies für Nutzer
+- [ ] Kein vollständiger Black-Box-Test per direktem REST-API-Aufruf ohne Session durchgeführt (gleiche bewusste Grenze wie in PROJ-1: dafür bräuchte es einen Aufruf außerhalb der App mit dem Anon-Key, der in diesem Feature clientseitig nirgends exponiert wird, da alle Mutationen über Server Actions laufen)
+
+### Edge Cases Status
+
+#### EC-1: Extrem langer Themenname
+- [x] Clientseitig verhindert (100-Zeichen-`maxLength`, live getestet)
+- [x] Serverseitig per Zod-Schema verifiziert (Unit-Test)
+- [ ] DB-CHECK-Constraint selbst nicht direkt exerziert (nur per Code-Review der Migration bestätigt) — echte Verletzung würde Zod bereits vorher abfangen, DB-Regel ist bewusstes Defense-in-Depth
+
+#### EC-2: Sonder-/Leerzeichen-Varianten werden nicht als Duplikat erkannt
+- [x] Erwartetes Verhalten per Code-Review bestätigt (`lower(btrim(name))`-Vergleich, keine Fuzzy-Erkennung) — entspricht der Spec, kein Bug
+
+#### EC-3: Ladezustand vor dem ersten Rendern
+- [x] Kein Flackern beobachtet (Next.js Server Component liefert fertig gerenderte Daten aus, kein Client-seitiger Nachlade-Sprung)
+
+#### EC-4/EC-5: Mehrere Tabs / gleichzeitige Aktionen
+- [ ] NICHT GETESTET (laut Spec bewusst kein Konflikt-Handling in dieser Version, Single-User-Kontext)
+
+#### EC-6: Klausurrelevanz rückwirkend für Kompetenzanalyse
+- N/A für PROJ-2 (Spec-Aussage: Sache von PROJ-8)
+
+### Security Audit Results
+- [x] Authentication: `/themen` ohne Session konsequent verweigert (E2E + live, alle Engines)
+- [x] Authorization (RLS): Policies per Code-Review korrekt (`auth.uid() = user_id`), App-Layer verweigert zusätzlich ohne Session — kein Multi-User-Black-Box-Test möglich (nur 1 Account, siehe AC16)
+- [x] Input-Validierung / XSS: `<img src=x onerror=alert(1)>` als Themenname live angelegt — React escaped korrekt, kein Script-Alert ausgelöst, Payload erscheint nur als Text
+- [x] Fehlermeldungen leaken keine internen Details: Server Actions geben ausschließlich kontrollierte Zod-Meldungen oder die generische Verbindungsfehler-Meldung zurück, nie rohe Supabase-/Postgres-Fehlertexte
+- [x] Race Condition (Doppelklick „Hinzufügen"): Button deaktiviert sich synchron beim ersten Klick, ein zweiter Klick kann den nativen disabled-Button gar nicht erst treffen — zusätzliche Absicherung durch den DB-Unique-Constraint (bereits über AC5 verifiziert)
+- Rate-Limiting: nicht Teil dieser Spec (Single-User-App, wie in PROJ-1 bewusst entschieden) — kein Gap, sondern bestätigte Produktentscheidung
+
+### Regression Testing (PROJ-1)
+- [x] Alle 10 bestehenden PROJ-1-E2E-Tests weiterhin grün (`npm run test:e2e`)
+- [x] Login, Dashboard (korrekte E-Mail-Anzeige), Logout, erneuter Schutz nach Logout — live mit dem QA-Account nachgetestet, keine Regression durch PROJ-2
+
+### Automated Tests
+- **Unit-Tests (Vitest):** 37/37 grün — 24 Server-Action-Tests (PROJ-2 Backend) + 4 neue Tests für `groupFaecherByKlausurtag` (`src/lib/klausurtage.test.ts`) + 9 bereits bestehende (PROJ-1)
+- **E2E-Tests (Playwright):** 14/14 grün — `tests/PROJ-2-zentraler-themenkatalog.spec.ts` (2 neue Tests: Redirect bei fehlender Session, kein Query-String-Opt-out) + 10 bestehende PROJ-1-Tests, über Chromium + Mobile Safari
+- Bewusst NICHT in die committete E2E-Suite aufgenommen: authentifizierte Abläufe (Anlegen/Umbenennen/Löschen/Klausurrelevanz), da dafür echte Zugangsdaten nötig wären — genau wie bei PROJ-1 werden diese Pfade nicht mit Secrets im Repo getestet, sondern live während der QA-Session (siehe oben) verifiziert
+- `npm run build` läuft fehlerfrei durch. `npm run lint` weiterhin ohne Wirkung (vorbestehende Tooling-Lücke aus PROJ-1, nicht PROJ-2-spezifisch)
+
+### Bugs Found
+
+#### BUG-1: Migration verwendete `uuid_generate_v4()`, obwohl `uuid-ossp` nicht aktiviert war
+- **Severity:** High (blockierte die komplette Migration und damit jede Funktion des Features)
+- **Steps to Reproduce:**
+  1. Migration `20260813211609_create_themenkatalog.sql` mit `id uuid primary key default uuid_generate_v4()` erstellen
+  2. `npx supabase db push` gegen ein Supabase-Projekt ausführen, auf dem die `uuid-ossp`-Extension nicht aktiviert ist
+  3. Erwartet: Migration wird angewendet
+  4. Tatsächlich: `ERROR: function uuid_generate_v4() does not exist (SQLSTATE 42883)`, Migration bricht ab
+- **Status:** Gefunden und noch in derselben Session behoben (Wechsel auf `gen_random_uuid()`, seit PostgreSQL 13 fest im Core, keine Extension nötig) — zweiter `db push`-Versuch erfolgreich, vom Nutzer bestätigt
+- **Priority:** Bereits gefixt, kein offener Bug mehr
+
+### Summary
+- **Acceptance Criteria:** 14/16 vollständig verifiziert, 2 bewusst nicht testbar (AC10 wartet auf PROJ-3/4/5; AC15 nur per Unit-Test statt live reproduzierbar — beides dokumentierte, nachvollziehbare Grenzen, keine offenen Bugs)
+- **Bugs Found:** 1 total (1 High, bereits gefixt — 0 offene Bugs)
+- **Security:** Pass — keine Findings offen
+- **Production Ready:** YES (im Rahmen des Non-Goals „kein Multi-User-Betrieb" — PROJ-2 ist für den persönlichen Gebrauch bereit)
+- **Recommendation:** Deploy (bzw. für dieses Projekt: als nächstes `/write-spec PROJ-3`, das auf PROJ-2 aufbaut — siehe Deployment-Abschnitt zur bewussten Deployment-Entscheidung aus PROJ-1)
 
 ## Deployment
 _To be added by /deploy_

@@ -15,7 +15,7 @@ Der Examensplaner StB ist eine digitale Webanwendung zur strukturierten Vorberei
 | P0 (MVP) | Zentraler Themenkatalog (fachbezogen, Dropdown-verwaltet) | Planned |
 | P0 (MVP) | Dashboard (Zeitstrahl, Kalender, Todos, Wdh.-Übersicht, Klausur-Zähler) | Planned |
 | P0 (MVP) | Todo-Liste (Aufgaben/Fristen, kalenderverzahnt) | Planned |
-| P0 (MVP) | Karteikarten (Theorie/Klausurtechnik, Spaced Repetition, Bloom-Stufen) | Planned |
+| P0 (MVP) | Karteikarten (Theorie/Klausurtechnik, adaptive Spaced-Repetition, Selbsteinschätzung) | Planned |
 | P0 (MVP) | Übungsaufgaben (Zwei-Dropdown-Bewertung, adaptive Wiederholung) | Planned |
 | P0 (MVP) | Probeklausuren (Drei-Stufen-Nacharbeit) | Planned |
 | P0 (MVP) | Wiederholungsplan (hub-übergreifende Aggregation) | Planned |

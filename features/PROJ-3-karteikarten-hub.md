@@ -1,8 +1,8 @@
 # PROJ-3: Karteikarten-Hub
 
 ## Status: Planned
-**Created:** 2026-08-14
-**Last Updated:** 2026-08-14
+**Created:** 2026-09-02
+**Last Updated:** 2026-09-02
 
 ## Dependencies
 - PROJ-1 (Supabase-Infrastruktur-Setup) — für Auth-Schutz der Hub-Route und das RLS-Muster
@@ -117,36 +117,158 @@
 - Performance: Laden der Kartenliste < 300ms (analog PROJ-1/PROJ-2)
 
 ## Open Questions
-- [ ] Zeichenlimits für Frage/Quelle/Fehlernotiz — wird in `/architecture` festgelegt (analog PROJ-2 Themenname-Limit)
-- [ ] Exakte Rundungsregel für `wdh_datum = heute + runden(intervall)` (kaufmännisch vs. abrunden) — technische Detailentscheidung für `/architecture`
+- [x] Zeichenlimits für Frage/Quelle/Fehlernotiz — in `/architecture` festgelegt (siehe Technical Decisions): Frage 1.000, Quelle 200, Fehlernotiz 1.000 Zeichen
+- [x] Exakte Rundungsregel für `wdh_datum = heute + runden(intervall)` — in `/architecture` auf kaufmännische Rundung festgelegt (siehe Technical Decisions)
 
 ## Decision Log
 
 ### Product Decisions
 | Decision | Rationale | Date |
 |----------|-----------|------|
-| „Bloom-Stufen" aus PRD/INDEX.md werden NICHT als eigenes Klassifikationsfeld umgesetzt — es bleibt bei der 5-stufigen Selbsteinschätzung aus dem Prototyp | Der PRD-Begriff war ungenau; der validierte Prototyp implementiert eine Beherrschungs-/Konfidenz-Skala, keine echte Bloom'sche Taxonomie (Erinnern/Verstehen/Anwenden/Analysieren/Bewerten/Erschaffen). Ein zusätzliches Bloom-Feld hätte keinen erkennbaren MVP-Nutzen | 2026-08-14 |
-| Die Intervallberechnung folgt `Berechnungsspezifikation_Kompetenzmodell.md` Abschnitt 2 statt des im Prototyp fest codierten Rating→Tage-Mappings und statt der in INDEX.md genannten 1/3/9/27/81-Sequenz | Nutzer hat diese Datei als maßgeblich benannt; sie ersetzt in Abschnitt 10 explizit das alte 1/3/9/27/81-Mapping durch einen wachsenden, zustandsbasierten Algorithmus nach SM-2-Vorbild — echtes Spaced-Repetition-Wachstum statt eines statischen Lookups | 2026-08-14 |
-| Freistellungsphase-Deckelung und Prüfungsdatum-Obergrenze (Abschnitt 2.2) werden in PROJ-3 nicht umgesetzt | Es existiert noch kein Prüfungsdatum-Feld; Nutzer hat entschieden, dass das Prüfungsdatum stattdessen mit PROJ-9 (Dashboard) editierbar hinterlegt wird. Die Deckelung wird nachgezogen, sobald dieses Feld existiert | 2026-08-14 |
-| Die Bewertungshistorie (`reviews`-Tabelle) wird bereits mit PROJ-3 angelegt und befüllt, obwohl PROJ-3 selbst noch keine Verlaufsansicht zeigt | Verhindert, dass alle bis zur PROJ-8-Umsetzung gesammelten Bewertungen unwiderruflich fehlen | 2026-08-14 |
-| Keine Parameter-Einstellungsseite — feste Default-Werte im Code | „Konfigurierbar" in der Berechnungsspezifikation bezieht sich auf die (in PRD/INDEX nicht vorgesehene) Kalibrierungsauswertung, nicht auf einen MVP-Bedarf | 2026-08-14 |
-| Die Fokuseinheit (dedizierter Session-Modus: fällige Karten nacheinander, aufdecken, bewerten) ist Teil von PROJ-3 | Zentral für die im PRD genannten Prinzipien Spaced Repetition und Retrieval Practice; entspricht dem validierten Prototyp | 2026-08-14 |
-| Mindestens 1 Thema ist beim Anlegen einer Karte Pflicht (Abweichung vom Prototyp, der dies optional lässt) | Eine themenlose Karte wäre für die themenbasierte Kompetenzanalyse (PROJ-8) unsichtbar; widerspräche dem Kernzweck aus PROJ-2 („damit ich meine Karteikarten … einordnen kann") | 2026-08-14 |
-| Löschen einer Karte erfordert einen Bestätigungsdialog (Abweichung vom Prototyp) | Konsistenz mit der bereits in PROJ-2 etablierten Konvention für destruktive Aktionen | 2026-08-14 |
-| Jede Karte zeigt ein Gültigkeits-Badge (Gültig/Verfallen) nach der neuen `gueltig()`-Formel statt des alten Prozent-Ampel-Badges (Bewertung × 20 %) | Das alte Prozent-Badge würde nach dem neuen Modell irreführende Ergebnisse zeigen (z.B. eine längst verfallene Top-Bewertung weiterhin als „grün") | 2026-08-14 |
-| Änderung der Selbsteinschätzung löst unabhängig vom Ort (Liste, Bearbeiten-Formular, Fokuseinheit) immer denselben Bewertungsalgorithmus + Historieneintrag aus; Änderung anderer Felder ohne Bewertungsänderung löst keine Neuberechnung aus | Konsistentes Verhalten ohne Sonderfälle je nach UI-Einstiegspunkt; reine Metadaten-Bearbeitung soll die Wiederholungsplanung nicht verfälschen | 2026-08-14 |
-| Die `ThemaFeld`-Komponente aus dem PROJ-2-Prototyp (Chip-Mehrfachauswahl mit Inline-Neuanlage) wird 1:1 übernommen, keine Neuentwicklung | Bereits in PROJ-2 als verbindliche Vorgabe für PROJ-3 festgehalten | 2026-08-14 |
+| „Bloom-Stufen" aus PRD/INDEX.md werden NICHT als eigenes Klassifikationsfeld umgesetzt — es bleibt bei der 5-stufigen Selbsteinschätzung aus dem Prototyp | Der PRD-Begriff war ungenau; der validierte Prototyp implementiert eine Beherrschungs-/Konfidenz-Skala, keine echte Bloom'sche Taxonomie (Erinnern/Verstehen/Anwenden/Analysieren/Bewerten/Erschaffen). Ein zusätzliches Bloom-Feld hätte keinen erkennbaren MVP-Nutzen | 2026-09-02 |
+| Die Intervallberechnung folgt `Berechnungsspezifikation_Kompetenzmodell.md` Abschnitt 2 statt des im Prototyp fest codierten Rating→Tage-Mappings und statt der in INDEX.md genannten 1/3/9/27/81-Sequenz | Nutzer hat diese Datei als maßgeblich benannt; sie ersetzt in Abschnitt 10 explizit das alte 1/3/9/27/81-Mapping durch einen wachsenden, zustandsbasierten Algorithmus nach SM-2-Vorbild — echtes Spaced-Repetition-Wachstum statt eines statischen Lookups | 2026-09-02 |
+| Freistellungsphase-Deckelung und Prüfungsdatum-Obergrenze (Abschnitt 2.2) werden in PROJ-3 nicht umgesetzt | Es existiert noch kein Prüfungsdatum-Feld; Nutzer hat entschieden, dass das Prüfungsdatum stattdessen mit PROJ-9 (Dashboard) editierbar hinterlegt wird. Die Deckelung wird nachgezogen, sobald dieses Feld existiert | 2026-09-02 |
+| Die Bewertungshistorie (`reviews`-Tabelle) wird bereits mit PROJ-3 angelegt und befüllt, obwohl PROJ-3 selbst noch keine Verlaufsansicht zeigt | Verhindert, dass alle bis zur PROJ-8-Umsetzung gesammelten Bewertungen unwiderruflich fehlen | 2026-09-02 |
+| Keine Parameter-Einstellungsseite — feste Default-Werte im Code | „Konfigurierbar" in der Berechnungsspezifikation bezieht sich auf die (in PRD/INDEX nicht vorgesehene) Kalibrierungsauswertung, nicht auf einen MVP-Bedarf | 2026-09-02 |
+| Die Fokuseinheit (dedizierter Session-Modus: fällige Karten nacheinander, aufdecken, bewerten) ist Teil von PROJ-3 | Zentral für die im PRD genannten Prinzipien Spaced Repetition und Retrieval Practice; entspricht dem validierten Prototyp | 2026-09-02 |
+| Mindestens 1 Thema ist beim Anlegen einer Karte Pflicht (Abweichung vom Prototyp, der dies optional lässt) | Eine themenlose Karte wäre für die themenbasierte Kompetenzanalyse (PROJ-8) unsichtbar; widerspräche dem Kernzweck aus PROJ-2 („damit ich meine Karteikarten … einordnen kann") | 2026-09-02 |
+| Löschen einer Karte erfordert einen Bestätigungsdialog (Abweichung vom Prototyp) | Konsistenz mit der bereits in PROJ-2 etablierten Konvention für destruktive Aktionen | 2026-09-02 |
+| Jede Karte zeigt ein Gültigkeits-Badge (Gültig/Verfallen) nach der neuen `gueltig()`-Formel statt des alten Prozent-Ampel-Badges (Bewertung × 20 %) | Das alte Prozent-Badge würde nach dem neuen Modell irreführende Ergebnisse zeigen (z.B. eine längst verfallene Top-Bewertung weiterhin als „grün") | 2026-09-02 |
+| Änderung der Selbsteinschätzung löst unabhängig vom Ort (Liste, Bearbeiten-Formular, Fokuseinheit) immer denselben Bewertungsalgorithmus + Historieneintrag aus; Änderung anderer Felder ohne Bewertungsänderung löst keine Neuberechnung aus | Konsistentes Verhalten ohne Sonderfälle je nach UI-Einstiegspunkt; reine Metadaten-Bearbeitung soll die Wiederholungsplanung nicht verfälschen | 2026-09-02 |
+| Die `ThemaFeld`-Komponente aus dem PROJ-2-Prototyp (Chip-Mehrfachauswahl mit Inline-Neuanlage) wird 1:1 übernommen, keine Neuentwicklung | Bereits in PROJ-2 als verbindliche Vorgabe für PROJ-3 festgehalten | 2026-09-02 |
 
 ### Technical Decisions
 <!-- Added by /architecture -->
 | Decision | Rationale | Date |
 |----------|-----------|------|
+| Eine gemeinsame `karteikarten`-Tabelle mit Typ-Feld (theorie/klausurtechnik) statt zwei getrennter Tabellen | Entspricht dem validierten Prototyp (eine gemeinsame, per Typ filterbare Liste); einfacher zu pflegen als zwei parallele Tabellen mit identischer Struktur | 2026-09-02 |
+| Eigene `karteikarten_reviews`-Tabelle statt einer generischen, hub-übergreifenden `reviews`-Tabelle | Garantiert per Fremdschlüssel-Kaskade, dass beim Löschen einer Karte automatisch ihre komplette Bewertungshistorie mitgelöscht wird (AC-Anforderung), ohne zusätzliche Aufräum-Logik. Eine polymorphe, hub-übergreifende Tabelle (wie in der Berechnungsspezifikation generisch skizziert) hätte diese referenzielle Integrität nicht automatisch. PROJ-4 kann bei Bedarf nach demselben Muster eine eigene Historientabelle anlegen | 2026-09-02 |
+| Verknüpfungstabelle `karteikarten_themen` (Many-to-Many) statt einer einzelnen Themen-Spalte | Eine Karte kann laut Spezifikation mehreren Themen zugeordnet sein; identisches Muster zur Mehrfachauswahl, das PROJ-2 für zukünftige Hubs vorgesehen hat | 2026-09-02 |
+| Eine einzige serverseitige „Bewertung speichern"-Aktion, gemeinsam genutzt von Listenansicht, Bearbeiten-Formular und Fokuseinheit (inkl. Erstbewertung beim Anlegen) | Garantiert identisches Verhalten unabhängig vom Einstiegspunkt, statt dreier separater Implementierungen, die auseinanderlaufen könnten | 2026-09-02 |
+| Gültigkeits-Badge wird bei jedem Laden aus Bewertung + Fälligkeit + Karenzzeit berechnet, nicht als eigener gespeicherter Wert | Der Status kann allein durch Zeitablauf kippen, auch ohne Nutzeraktion — ein gespeicherter Wert würde sofort veralten. Folgt demselben Prinzip, das die Berechnungsspezifikation für die Themen-Stufe vorschreibt (kein gespeicherter Stufenwert) | 2026-09-02 |
+| Route `/karteikarten`, Server Actions statt eigener API-Routen | Konsistent mit dem bereits abgenommenen Muster aus PROJ-1/PROJ-2 | 2026-09-02 |
+| RLS-Muster 1:1 aus PROJ-1/PROJ-2 für alle drei neuen Tabellen (`karteikarten`, `karteikarten_themen`, `karteikarten_reviews`) | Bereits geprüftes, etabliertes Sicherheitsmuster, keine neue Logik nötig | 2026-09-02 |
+| Zeichenlimits: Frage/Aufgabe 1.000 Zeichen, Quelle 200 Zeichen, Fehlernotiz 1.000 Zeichen | Ausreichend für mehrsätzige Steuerrechts-Sachverhalte bzw. kurze Quellenangaben, verhindert aber ausufernde Eingaben (löst die offene Frage aus der Spezifikation) | 2026-09-02 |
+| Rundungsregel für `wdh_datum`: kaufmännische Rundung (0,5 Tage aufwärts) | Einfach, vorhersehbar, keine systematische Verzerrung in eine Richtung (löst die offene Frage aus der Spezifikation) | 2026-09-02 |
+| Fokuseinheit als Vollbild-Overlay über dem Hub, ohne eigene URL | Entspricht dem Prototyp-Verhalten; kein zusätzlicher Routing-Aufwand für einen temporären Session-Zustand | 2026-09-02 |
+| Keine neuen npm-Pakete oder shadcn/ui-Komponenten nötig | Alle benötigten Bausteine (react-hook-form, Zod, Select/Textarea/Dialog/AlertDialog/Badge/Progress/Skeleton) sind bereits aus PROJ-1/PROJ-2 im Projekt vorhanden | 2026-09-02 |
 
 ---
 <!-- Sections below are added by subsequent skills -->
 
 ## Tech Design (Solution Architect)
-_To be added by /architecture_
+
+### Component Structure
+```
+/karteikarten (geschützte Route — Zugriff nur eingeloggt, sonst Redirect zu /login,
+               gesichert durch die bestehende Middleware aus PROJ-1)
+└── Karteikarten-Hub-Seite
+    ├── Kopfzeile: Seitentitel + Kurzbeschreibung + "Themen verwalten"-Link (→ /themen,
+    │   von PROJ-2 für PROJ-3 vorgesehen) + "Neue Karteikarte"-Button
+    │
+    ├── Filter-/Aktionsleiste
+    │   ├── Typ-Segment (Alle / Theorie / Klausurtechnik)
+    │   ├── Fach-Auswahl (Dropdown, alle 11 Fächer)
+    │   ├── Sortierung (Fälligkeit / Fach)
+    │   ├── Kartenanzahl (Anzeige)
+    │   └── "Fokuseinheit starten"-Button
+    │
+    ├── Kartenliste
+    │   └── Je Karte (Card)
+    │       ├── Kopfzeile: Typ-Badge (Theorie/Klausurtechnik), Fach, Themen-Chips,
+    │       │   Gültigkeits-Badge (Gültig/Verfallen)
+    │       ├── Frage-Text (klickbar → öffnet Bearbeiten-Formular)
+    │       ├── Aktionsreihe: Selbsteinschätzung-Auswahl (inline), "Fehler
+    │       │   aufdecken/ausblenden"-Button, nächste Fälligkeit (relativ + Datum),
+    │       │   Bearbeiten-Icon, Löschen-Icon
+    │       └── Aufklappbarer Fehleranalyse-Bereich (nur nach "Fehler aufdecken"
+    │           sichtbar; zeigt Fehlernotiz + Quelle, oder "Keine Fehlernotiz hinterlegt")
+    │
+    ├── Leerer Zustand ("Keine Karten") — wenn Filter keine Treffer liefert
+    │
+    ├── Neue/Bearbeiten-Karteikarte-Formular (Modal)
+    │   ├── Fach-Auswahl
+    │   ├── Typ-Auswahl (Theorie/Klausurtechnik) — Pflichtfeld
+    │   ├── Themenfeld (ThemaFeld-Komponente — Mehrfachauswahl + Inline-Neuanlage,
+    │   │   nur Themen des gewählten Fachs, aktiviert erst nach Fach-Auswahl) — mind. 1 Pflicht
+    │   ├── Frage/Aufgabe (Textfeld, mehrzeilig, max. 1.000 Zeichen)
+    │   ├── Selbsteinschätzung-Auswahl (1–5, Standard: 3)
+    │   ├── Quelle (optionales Textfeld, max. 200 Zeichen)
+    │   └── Fehleranalyse (optionales Textfeld, mehrzeilig, max. 1.000 Zeichen)
+    │
+    ├── Lösch-Bestätigungsdialog (Abbrechen / Löschen)
+    │
+    ├── Fokuseinheit (Vollbild-Overlay über dem Hub, keine eigene URL)
+    │   ├── Setup: Fach-Filter, Typ-Segment, Anzahl fälliger/überfälliger Karten,
+    │   │   Start/Abbrechen (Start deaktiviert bei 0 fälligen Karten)
+    │   ├── Session läuft: Fortschrittsanzeige, Kartenkopf (Typ/Fach/Themen), Frage,
+    │   │   "Antwort aufdecken"-Button → Selbstkontroll-Panel (vorherige Fehlernotiz/
+    │   │   Quelle oder "Keine Referenz hinterlegt"), Fehlernotiz-Eingabe (optional),
+    │   │   5 Bewertungs-Buttons (je mit Fälligkeits-Vorschau in Tagen)
+    │   └── Abschluss: Anzahl gelernter Karten, Verteilung der vergebenen Bewertungen,
+    │       "Zurück zum Hub"
+    │
+    └── Lade-/Fehlerzustände (Skeleton beim initialen Laden, "Verbindung
+        fehlgeschlagen"-Hinweis bei Netzwerkfehlern)
+```
+
+### Data Model (in plain language)
+```
+Tabelle "karteikarten" (vom Nutzer gepflegt, eine gemeinsame Tabelle für
+beide Kartentypen, per Typ-Feld unterschieden):
+- id
+- user_id          → verweist auf den eingeloggten Nutzer (RLS-Muster aus PROJ-1)
+- fach_id           → verweist auf "faecher" (PROJ-2)
+- typ               → theorie oder klausurtechnik
+- frage             → Frage-/Aufgabentext, max. 1.000 Zeichen
+- quelle            → optionale Quellenangabe, max. 200 Zeichen
+- fehlernotiz       → optionale Fehleranalyse, max. 1.000 Zeichen, in der UI
+                       standardmäßig verborgen
+- bewertung         → aktuelle Selbsteinschätzung 1–5
+- intervall         → aktuelles Wiederholungsintervall in Tagen (intern mit
+                       Nachkommastellen, gerundet bei Anzeige/Terminvergabe)
+- wdh_anzahl        → Anzahl bisheriger Bewertungen
+- wdh_datum         → nächste Fälligkeit (Datum)
+- created_at
+
+Tabelle "karteikarten_themen" (Verknüpfungstabelle, da eine Karte mehrere
+Themen haben kann — analog dem Mehrfachauswahl-Muster aus PROJ-2):
+- karteikarte_id    → verweist auf "karteikarten"; Löschen der Karte entfernt
+                       automatisch auch diese Zuordnungen
+- thema_id          → verweist auf "themen" (PROJ-2)
+
+Tabelle "karteikarten_reviews" (unveränderliche Historie, eine Zeile pro
+Bewertungsereignis — nie aktualisiert oder einzeln gelöscht, nur beim
+Löschen der zugehörigen Karte automatisch mitentfernt):
+- id
+- user_id
+- karteikarte_id    → verweist auf "karteikarten"
+- datum             → Zeitpunkt der Bewertung
+- bewertung         → vergebene Bewertung 1–5
+- intervall_danach  → daraus berechnetes neues Intervall
+
+Zugriffsregel (Row Level Security) für alle drei Tabellen: identisches
+Muster wie "themen" aus PROJ-1/PROJ-2 — ein Nutzer sieht und bearbeitet
+ausschließlich eigene Zeilen (user_id = eingeloggter Nutzer).
+
+Gespeichert in: Supabase (PostgreSQL) — wie alle bisherigen Daten, zentral
+und über Geräte hinweg synchron.
+```
+
+### Tech Decisions (Reasoning)
+- **Eine gemeinsame `karteikarten`-Tabelle mit Typ-Feld statt zwei getrennter Tabellen:** entspricht dem validierten Prototyp (eine gemeinsame, filterbare Liste), einfacher zu pflegen als zwei parallele Tabellen mit identischer Struktur.
+- **Eigene `karteikarten_reviews`-Tabelle statt einer generischen, hub-übergreifenden `reviews`-Tabelle:** garantiert per Fremdschlüssel-Kaskade, dass beim Löschen einer Karte automatisch auch ihre komplette Bewertungshistorie mitgelöscht wird, ohne zusätzliche Aufräum-Logik. Wenn PROJ-4 später eine eigene Übungsaufgaben-Historie braucht, kann sie nach demselben Muster eine eigene Tabelle anlegen.
+- **Verknüpfungstabelle `karteikarten_themen` statt einer einzelnen Themen-Spalte:** eine Karte kann laut Spezifikation mehreren Themen zugeordnet sein — exakt das Muster, das PROJ-2 für zukünftige Hubs vorgesehen hat.
+- **Eine einzige serverseitige „Bewertung speichern"-Aktion für alle drei Bewertungs-Einstiegspunkte** (Listenansicht, Bearbeiten-Formular, Fokuseinheit, inkl. Erstbewertung beim Anlegen): garantiert identisches Verhalten unabhängig vom Einstiegspunkt statt dreier separater Implementierungen, die auseinanderlaufen könnten.
+- **Gültigkeits-Badge wird bei jedem Laden berechnet, nicht gespeichert:** der Status kann allein durch Zeitablauf kippen, auch ohne Nutzeraktion — ein gespeicherter Wert würde sofort veralten. Folgt demselben Prinzip, das die Berechnungsspezifikation für die Themen-Stufe vorschreibt.
+- **Server Actions statt eigener API-Routen, RLS-Muster 1:1 aus PROJ-1/PROJ-2:** konsistent mit dem bereits abgenommenen Muster.
+- **`ThemaFeld`-Komponente als eigenständige, wiederverwendbare Komponente:** kein PROJ-3-internes Detail, sondern direkte Grundlage für PROJ-4/PROJ-5, wie in PROJ-2 vorgesehen.
+- **Zeichenlimits und Rundungsregel:** lösen die beiden offenen Fragen aus der Spezifikation (siehe Technical Decisions).
+- **Fokuseinheit als Vollbild-Overlay ohne eigene URL:** entspricht dem Prototyp-Verhalten, kein zusätzlicher Routing-Aufwand für einen temporären Session-Zustand.
+
+### Dependencies
+- Keine neuen npm-Pakete nötig — react-hook-form, Zod und alle benötigten shadcn/ui-Komponenten (Select, Textarea, Dialog, AlertDialog, Badge, Progress, Skeleton) sind bereits aus PROJ-1/PROJ-2 im Projekt installiert
+- Supabase CLI (bereits im Einsatz) für die neue Migration
 
 ## QA Test Results
 _To be added by /qa_

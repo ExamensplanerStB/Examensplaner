@@ -29,7 +29,7 @@ import {
   deleteKarteikarte,
   updateKarteikarte,
 } from "@/app/karteikarten/actions";
-import type { Bewertung, Karteikarte, KarteikartenTyp } from "@/lib/karteikarten";
+import { CONNECTION_ERROR, type Bewertung, type Karteikarte, type KarteikartenTyp } from "@/lib/karteikarten";
 import type { KarteikarteFormValues } from "@/lib/schemas/karteikarte";
 
 import { KarteikarteCard } from "./karteikarte-card";
@@ -72,10 +72,14 @@ export function KarteikartenManager({
     fachId: string,
     name: string
   ): Promise<{ error: string } | { thema: Thema }> {
-    const result = await addThema(fachId, name);
-    if ("error" in result) return result;
-    setThemen((prev) => [...prev, result.thema]);
-    return result;
+    try {
+      const result = await addThema(fachId, name);
+      if ("error" in result) return result;
+      setThemen((prev) => [...prev, result.thema]);
+      return result;
+    } catch {
+      return { error: CONNECTION_ERROR };
+    }
   }
 
   /**
@@ -83,16 +87,25 @@ export function KarteikartenManager({
    * der Listenansicht und der Fokuseinheit (das Bearbeiten-Formular ruft bei
    * geänderter Bewertung serverseitig dieselbe Server Action auf, siehe
    * `updateKarteikarte`), damit alle Einstiegspunkte identisch rechnen.
+   *
+   * try/catch fängt hier auch einen Netzwerkfehler beim Aufruf der Server
+   * Action selbst ab (nicht nur Fehler, die die Action serverseitig
+   * zurückgibt) — ohne das bliebe der Lade-Zustand des Aufrufers für immer
+   * hängen (siehe QA BUG-1).
    */
   async function bewerten(
     karteId: string,
     bewertung: Bewertung,
     neueFehlernotiz?: string
   ): Promise<string | null> {
-    const result = await bewerteKarteikarte(karteId, bewertung, neueFehlernotiz);
-    if ("error" in result) return result.error;
-    setKarten((prev) => prev.map((k) => (k.id === karteId ? result.karte : k)));
-    return null;
+    try {
+      const result = await bewerteKarteikarte(karteId, bewertung, neueFehlernotiz);
+      if ("error" in result) return result.error;
+      setKarten((prev) => prev.map((k) => (k.id === karteId ? result.karte : k)));
+      return null;
+    } catch {
+      return CONNECTION_ERROR;
+    }
   }
 
   function openCreateForm() {
@@ -106,17 +119,21 @@ export function KarteikartenManager({
   }
 
   async function handleFormSubmit(values: KarteikarteFormValues): Promise<string | null> {
-    if (editingKarte) {
-      const result = await updateKarteikarte(editingKarte.id, values);
-      if ("error" in result) return result.error;
-      setKarten((prev) => prev.map((k) => (k.id === editingKarte.id ? result.karte : k)));
-      return null;
-    }
+    try {
+      if (editingKarte) {
+        const result = await updateKarteikarte(editingKarte.id, values);
+        if ("error" in result) return result.error;
+        setKarten((prev) => prev.map((k) => (k.id === editingKarte.id ? result.karte : k)));
+        return null;
+      }
 
-    const result = await createKarteikarte(values);
-    if ("error" in result) return result.error;
-    setKarten((prev) => [result.karte, ...prev]);
-    return null;
+      const result = await createKarteikarte(values);
+      if ("error" in result) return result.error;
+      setKarten((prev) => [result.karte, ...prev]);
+      return null;
+    } catch {
+      return CONNECTION_ERROR;
+    }
   }
 
   function requestDelete(karte: Karteikarte) {
@@ -127,14 +144,19 @@ export function KarteikartenManager({
   async function confirmDelete() {
     if (!pendingDelete) return;
     setIsDeleting(true);
-    const result = await deleteKarteikarte(pendingDelete.id);
-    setIsDeleting(false);
-    if ("error" in result) {
-      setDeleteError(result.error);
-      return;
+    try {
+      const result = await deleteKarteikarte(pendingDelete.id);
+      if ("error" in result) {
+        setDeleteError(result.error);
+        return;
+      }
+      setKarten((prev) => prev.filter((k) => k.id !== pendingDelete.id));
+      setPendingDelete(null);
+    } catch {
+      setDeleteError(CONNECTION_ERROR);
+    } finally {
+      setIsDeleting(false);
     }
-    setKarten((prev) => prev.filter((k) => k.id !== pendingDelete.id));
-    setPendingDelete(null);
   }
 
   const gefiltert = karten

@@ -1,6 +1,6 @@
 # PROJ-3: Karteikarten-Hub
 
-## Status: In Review
+## Status: In Progress
 **Created:** 2026-09-02
 **Last Updated:** 2026-09-05
 
@@ -292,6 +292,18 @@ und über Geräte hinweg synchron.
 **Getestet im Browser (Playwright-Treiberskript, headless Chromium, gegen das echte verlinkte Supabase-Projekt mit einem vom Nutzer bereitgestellten Test-Account):** Desktop (1440px), Tablet (768px), Mobile (375px) — kein horizontales Overflow auf keiner Breite. Golden Path: Fach wählen → Thema per ThemaFeld inline neu anlegen (echter `addThema`-Aufruf) → Frage eingeben → anlegen → Karte erscheint mit korrektem Typ-Badge, Fach, Themen-Chip und „Verfallen"-Badge (Default-Bewertung 3 < NIVEAU_SCHWELLE 4) → inline auf 5 hochgestuft → Intervall wächst korrekt von 2 auf 5 Tage, Badge wechselt auf „Gültig" → Fehler aufdecken/ausblenden → Bearbeiten-Modal → Lösch-Dialog (Abbrechen erhält die Karte) → Löschen (entfernt sie, „Keine Karten" erscheint). Fokuseinheit zusätzlich mit einer temporär eingefügten überfälligen Testkarte durchgespielt (Setup-Fälligkeitszähler → Run → Aufdecken → Bewertungsstufe „Fast ganz" → Abschluss-Zusammenfassung mit korrekter Verteilung) — Testkarte und Test-Thema wurden danach vollständig aus Code und Live-Datenbank entfernt (`git status`/`git diff` vor dem Commit leer verifiziert). Keine Console-Errors in allen Durchläufen.
 
 **Bekannte vorbestehende Tooling-Lücke (nicht PROJ-3-spezifisch, siehe PROJ-1/PROJ-2):** `npm run lint` weiterhin ohne Wirkung (fehlendes `eslint.config.js`). `npm run build` und `npm test` (60/60, davon 23 neue Tests) laufen fehlerfrei durch. Zusätzliche Beobachtung dieser Session: `vitest` (jsdom-Environment) brauchte auf diesem iCloud-synchronisierten Projektpfad vereinzelt mehrere Anläufe, da der jsdom-Bootstrap gelegentlich das interne Vitest-Worker-Timeout reißt — reines Umgebungsphänomen dieses Rechners/Pfads, keine Code-Ursache; alle Läufe waren am Ende grün.
+
+### Nachtrag: BUG-1 und BUG-2 behoben (2026-09-05)
+
+**BUG-1 (High, aus QA):** Ein echter Netzwerkfehler beim Aufruf einer Karteikarten-Server-Action ließ die UI dauerhaft in einem Lade-Zustand hängen, ohne die geforderte Verbindungsfehler-Meldung zu zeigen. Ursache: Die Server Actions fangen serverseitige Fehler per `try/catch` ab, aber eine Exception, die bereits beim *Aufruf* der Action auf Client-Seite auftritt (z.B. `TypeError: Failed to fetch`, wenn die Anfrage den Server gar nicht erreicht), wurde nirgends abgefangen.
+- Fix: try/catch um die drei Server-Action-Aufrufe in `KarteikartenManager` (`bewerten`, `handleFormSubmit`, `confirmDelete`) — der Aufrufort, an dem die Server Actions tatsächlich aufgerufen werden. Ein Fehlschlag wird jetzt wie ein von der Action zurückgegebener `{ error }` behandelt; die aufrufenden Komponenten (`KarteikarteCard`, `KarteikarteForm`, Lösch-Dialog, `Fokuseinheit`) brauchten keine Änderung, da sie einen zurückgegebenen Fehlertext bereits korrekt anzeigten.
+- Beim Live-Verifizieren des Fixes zusätzlich denselben Fehler in `handleThemaCreate` (Inline-Thema-Neuanlage über `ThemaFeld`, ruft PROJ-2s `addThema` auf) gefunden und mit demselben Muster behoben — im ursprünglichen QA-Bugreport nicht explizit genannt, aber identische Ursache am selben „Neue Karteikarte"-Formular.
+- Die einheitliche Fehlermeldung (`"Verbindung fehlgeschlagen, bitte später erneut versuchen"`) ist jetzt als `CONNECTION_ERROR`-Konstante in `src/lib/karteikarten.ts` zentralisiert und wird sowohl von den Server Actions (`src/app/karteikarten/actions.ts`) als auch vom Client (`karteikarten-manager.tsx`) importiert, statt an zwei Stellen als Literal dupliziert zu sein.
+- Live erneut verifiziert (simulierter Netzwerkausfall per Playwright-Route-Interception, gegen das echte Supabase-Projekt): Anlegen, inline Bewerten, Löschen und Inline-Thema-Neuanlage zeigen jetzt jeweils die Fehlermeldung, setzen den Lade-Zustand zurück und bleiben danach normal bedienbar (im selben Durchlauf erfolgreich erneut versucht). Test-Karten/-Themen wieder aus der Live-DB entfernt.
+
+**BUG-2 (Low, aus QA):** HTML-ähnlicher Text in einer Frage landete unescaped in einem `aria-label`. Fix: neue Hilfsfunktion `kurzerText()` (`src/lib/karteikarten.ts`) entfernt spitze Klammern und kürzt auf 60 Zeichen mit Ellipse; `karteikarte-card.tsx` nutzt sie jetzt für das `aria-label` des Selbsteinschätzung-Selects. 4 neue Unit-Tests. Live verifiziert mit einer Frage, die sowohl HTML-ähnlichen Text als auch > 60 Zeichen enthielt.
+
+**Getestet:** `npm run build` und `npm test` (91/91, davon 4 neue Tests für `kurzerText`) laufen fehlerfrei durch.
 
 ## Backend Implementation Notes (Backend Developer)
 

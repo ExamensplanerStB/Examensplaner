@@ -86,3 +86,17 @@ export function formatDatum(iso: string): string {
   const [jahr, monat, tag] = iso.split("-");
   return `${tag}.${monat}.${jahr}`;
 }
+
+/** Einheitliche Meldung für fehlgeschlagene Server-Kommunikation (Client und Server Actions teilen sich diesen Text). */
+export const CONNECTION_ERROR = "Verbindung fehlgeschlagen, bitte später erneut versuchen";
+
+/**
+ * Kürzt Text für die Verwendung in aria-labels: entfernt spitze Klammern
+ * (verhindert, dass HTML-ähnlicher Text wie Markup vorgelesen wird) und
+ * begrenzt die Länge, damit Screenreader keine beliebig lange Frage vorlesen.
+ */
+export function kurzerText(text: string, maxLength = 60): string {
+  const bereinigt = text.trim().replace(/[<>]/g, "");
+  if (bereinigt.length <= maxLength) return bereinigt;
+  return bereinigt.slice(0, maxLength).trimEnd() + "…";
+}

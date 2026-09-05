@@ -3,11 +3,10 @@
 import { revalidatePath } from "next/cache";
 
 import { createClient } from "@/lib/supabase/server";
-import type { Bewertung, Karteikarte, KarteikartenTyp } from "@/lib/karteikarten";
+import { CONNECTION_ERROR, type Bewertung, type Karteikarte, type KarteikartenTyp } from "@/lib/karteikarten";
 import { berechneNaechstesIntervall, heuteISO, naechsteFaelligkeit } from "@/lib/karteikarten-intervall";
 import { karteikarteSchema, type KarteikarteFormValues } from "@/lib/schemas/karteikarte";
 
-const CONNECTION_ERROR = "Verbindung fehlgeschlagen, bitte später erneut versuchen";
 const GUELTIGE_BEWERTUNGEN = [1, 2, 3, 4, 5];
 
 const KARTE_SELECT =

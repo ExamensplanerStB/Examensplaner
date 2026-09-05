@@ -20,6 +20,7 @@ import {
   faelligkeitsTag,
   formatDatum,
   gueltigkeitsStatus,
+  kurzerText,
   type Bewertung,
   type Karteikarte,
 } from "@/lib/karteikarten";
@@ -109,7 +110,7 @@ export function KarteikarteCard({
         <div className="w-[230px] space-y-1">
           <span className="text-xs font-medium text-ink-2">Selbsteinschätzung</span>
           <Select value={String(karte.bewertung)} onValueChange={handleBewertungChange} disabled={isBewerten}>
-            <SelectTrigger className="h-9" aria-label={`Selbsteinschätzung für „${karte.frage}“`}>
+            <SelectTrigger className="h-9" aria-label={`Selbsteinschätzung für „${kurzerText(karte.frage)}“`}>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>

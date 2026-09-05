@@ -5,6 +5,7 @@ import {
   faelligkeitsTag,
   formatDatum,
   gueltigkeitsStatus,
+  kurzerText,
   type Karteikarte,
 } from "./karteikarten";
 
@@ -80,5 +81,25 @@ describe("faelligkeitsDringlichkeit", () => {
 describe("formatDatum", () => {
   it("formatiert ISO-Datum als DD.MM.YYYY", () => {
     expect(formatDatum("2026-09-05")).toBe("05.09.2026");
+  });
+});
+
+describe("kurzerText", () => {
+  it("lässt kurzen Text unverändert", () => {
+    expect(kurzerText("Kurze Frage?")).toBe("Kurze Frage?");
+  });
+
+  it("entfernt spitze Klammern, damit HTML-ähnlicher Text nicht wie Markup wirkt", () => {
+    expect(kurzerText('<img src=x onerror="alert(1)">')).toBe('img src=x onerror="alert(1)"');
+  });
+
+  it("kürzt langen Text auf die angegebene Länge mit Ellipse", () => {
+    const langerText = "x".repeat(100);
+    const ergebnis = kurzerText(langerText, 60);
+    expect(ergebnis).toBe("x".repeat(60) + "…");
+  });
+
+  it("trimmt Whitespace vor der Längenprüfung", () => {
+    expect(kurzerText("   Frage mit Leerzeichen   ")).toBe("Frage mit Leerzeichen");
   });
 });

@@ -1,6 +1,6 @@
 # PROJ-3: Karteikarten-Hub
 
-## Status: In Progress
+## Status: Approved
 **Created:** 2026-09-02
 **Last Updated:** 2026-09-05
 
@@ -377,10 +377,10 @@ und über Geräte hinweg synchron.
 - [x] AC29: Vorzeitiger Abbruch behält bereits bewertete Karten — in dieser Session mit zwei künstlich überfälligen Karten verifiziert: nach Bewertung der ersten Karte (Fortschritt „1/2") wurde die Session über „Schließen" statt Weiterbewerten beendet; die bewertete Karte zeigte danach sofort ihr neu berechnetes Intervall und „Gültig"-Badge. Einschränkung: die zweite (nicht bewertete) Karte konnte wegen eines Restzustands aus einem vorherigen Testlauf in derselben Session nicht sauber isoliert als „unverändert" bestätigt werden — per Code-Review ist aber sichergestellt, dass `bewerten()` ausschließlich die jeweils aktuelle Karte anfasst
 
 #### Fehler & Sicherheit
-- [ ] **AC30: BUG-1 — Verbindungsfehler-Meldung fehlt bei echtem Netzwerkausfall (siehe Bugs Found)**
+- [x] AC30: Verbindungsfehler-Meldung erscheint korrekt — **BUG-1 gefixt, siehe Re-Test 2026-09-05**
 - [x] AC31: Zugriff auf `/karteikarten` ohne Session wird auf App-Ebene verweigert/umgeleitet. Kein direkter Black-Box-Test der RLS-Policies per REST-API ohne Session möglich (gleiche bewusste Grenze wie PROJ-1/PROJ-2: kein Zugriff auf den Anon-Key außerhalb der App in dieser Sandbox) — Policy-Korrektheit stattdessen per Code-Review der Migration bestätigt (`karteikarten`/`karteikarten_reviews`: `auth.uid() = user_id` auf allen vier Operationen bzw. Select/Insert; `karteikarten_themen`: Exists-Check gegen die Elternkarte)
 
-**Ergebnis: 30/31 Acceptance Criteria bestanden, 1 offener Bug (AC30)**
+**Ergebnis: 31/31 Acceptance Criteria bestanden (nach Re-Test vom 2026-09-05, siehe unten)**
 
 ### Edge Cases Status
 
@@ -410,7 +410,7 @@ und über Geräte hinweg synchron.
 - [x] Authorization (RLS): Policies per Code-Review korrekt; kein Multi-User-Black-Box-Test möglich (nur 1 Account, wie PROJ-1/PROJ-2)
 - [x] Input-Validierung / XSS: `<img src=x onerror="window.__xss_fired=true">` als Frage live angelegt — Payload wurde nicht ausgeführt (React escaped korrekt), erscheint nur als Text
 - [x] Fehlermeldungen leaken keine internen Details: alle beobachteten Fehler waren entweder Zod-Validierungsmeldungen oder die generische Verbindungsfehler-Meldung, nie rohe Supabase-/Postgres-Fehlertexte
-- [ ] Siehe BUG-2 (Low): unescapter Text in einem `aria-label` bei HTML-ähnlicher Frage — kein Sicherheitsrisiko (Attribute werden nicht als HTML interpretiert), aber ein Barrierefreiheits-Schönheitsfehler
+- [x] BUG-2 (Low) gefixt: `aria-label` enthält jetzt keine spitzen Klammern mehr und ist auf 60 Zeichen gekürzt — siehe Re-Test 2026-09-05
 - Rate-Limiting: nicht Teil dieser Spec (Single-User-App, wie in PROJ-1/PROJ-2 bewusst entschieden) — kein Gap, sondern bestätigte Produktentscheidung
 
 ### Regression Testing (PROJ-1/PROJ-2)
@@ -443,6 +443,7 @@ und über Geräte hinweg synchron.
 - **Reproduziert für:** Anlegen, inline Bewerten (Listenansicht), Löschen — live einzeln bestätigt. Bearbeiten (Formular-„Speichern") nutzt denselben Code-Pfad wie Anlegen (`KarteikarteForm`) und ist nach Code-Review identisch betroffen, wurde aber nicht separat live reproduziert.
 - **Screenshot:** siehe QA-Session (Anlegen-Dialog mit hängendem Spinner, Lösch-Dialog mit deaktiviertem Button)
 - **Priority:** Fix before deployment — betrifft den Kernbedienpfad des gesamten Features unter einer realistischen Bedingung (jeder kurze Netzwerk-Aussetzer während einer Bewertung/Anlage/Löschung)
+- **Status:** ✅ Fixed and re-verified (2026-09-05) — siehe Re-Test unten
 
 #### BUG-2: Unescapter Text in `aria-label` bei HTML-ähnlicher Frage
 - **Severity:** Low
@@ -451,13 +452,33 @@ und über Geräte hinweg synchron.
   2. Erwartet: Screenreader liest einen sinnvollen Text vor
   3. Tatsächlich: Das `aria-label` des Selbsteinschätzung-Selects enthält den rohen Text `Selbsteinschätzung für „<img src=x onerror="...">"` — kein Sicherheitsrisiko (Attribute werden nicht als HTML interpretiert, keine Codeausführung), aber für Screenreader-Nutzer verwirrend
 - **Priority:** Nice to have
+- **Status:** ✅ Fixed and re-verified (2026-09-05) — siehe Re-Test unten
+
+### Re-Test nach Bugfix (2026-09-05)
+
+**Getestet gegen:** `fix(PROJ-3): Handle failed server-action calls, sanitize aria-label text` (Commit `18d0784`)
+**Automatisiert:** `npm test` weiterhin 91/91 grün (4 neue Tests für `kurzerText`), `npm run test:e2e` weiterhin 18/18 grün — keine Regression.
+
+**Live-Regression (Golden Path, gegen das echte Supabase-Projekt):** Anlegen inkl. Inline-Thema-Neuanlage, Inline-Bewerten (Badge-Wechsel), Bearbeiten (Themenzuordnung bleibt korrekt erhalten — kein Rückfall des zuvor im Backend-Fix behobenen Bugs), Löschen (Abbrechen erhält die Karte), Fokuseinheit-Setup — alle weiterhin unverändert korrekt. Der zentrale Refactor (try/catch in `KarteikartenManager`) hat keine der zuvor bestandenen 30 Acceptance Criteria beeinträchtigt.
+
+**AC30 (BUG-1) gezielt erneut getestet** — echter Netzwerkausfall (Playwright-Route-Interception, POST an `/karteikarten` abgebrochen) für alle vier ursprünglich betroffenen Operationen **plus** die beim Fix zusätzlich entdeckte Inline-Thema-Neuanlage:
+- [x] Inline Bewerten: Fehlermeldung erscheint, Select bleibt danach bedienbar
+- [x] Löschen: Fehlermeldung erscheint im Dialog, „Löschen"-Button bleibt bedienbar, Dialog bleibt offen (kein Datenverlust)
+- [x] Bearbeiten/Speichern: Fehlermeldung erscheint im Dialog, „Speichern" bleibt bedienbar, Dialog bleibt offen
+- [x] Anlegen: Fehlermeldung erscheint im Dialog, „Anlegen" bleibt bedienbar, Dialog bleibt offen (Eingaben bleiben erhalten)
+- [x] Inline-Thema-Neuanlage (der beim Fix zusätzlich gefundene fünfte Fall): Fehlermeldung erscheint im Themenfeld
+- [x] Nach jedem simulierten Ausfall: Aktion beim erneuten (echten) Versuch erfolgreich — kein dauerhaft kaputter Zustand
+
+**BUG-2 gezielt erneut getestet** — Karte mit `<script>alert(1)</script> Eine sehr lange Frage …` (108 Zeichen) angelegt: `aria-label` enthält weder `<` noch `>` und ist auf 60 Zeichen + Ellipse gekürzt (bestätigt per gezieltem Locator auf die exakte Karte, nachdem ein erster Check versehentlich die falsche Karte traf und korrigiert wurde).
+
+Alle Testkarten/-Themen nach Abschluss aus der Live-Datenbank entfernt (`git status`/`git diff` vor dem Commit leer verifiziert).
 
 ### Summary
-- **Acceptance Criteria:** 30/31 vollständig verifiziert (1 offener Bug: AC30)
-- **Bugs Found:** 2 total (1 High, 1 Low)
+- **Acceptance Criteria:** 31/31 vollständig verifiziert
+- **Bugs Found:** 2 total (1 High, 1 Low) — **beide gefixt und re-verifiziert, keine offenen Bugs**
 - **Security:** Pass (mit dokumentierten, aus PROJ-1/PROJ-2 bekannten Grenzen: kein Multi-User-Test, kein direkter REST-Bypass-Test)
-- **Production Ready:** NO — BUG-1 (High) muss vor Deployment behoben werden, da er den Kernbedienpfad (Anlegen/Bewerten/Bearbeiten/Löschen) unter einer realistischen Netzwerkbedingung dauerhaft blockiert
-- **Recommendation:** BUG-1 in `/frontend` beheben (reine Client-seitige Fehlerbehandlung, keine Server-Action-Logik betroffen — try/catch um die vier `await <server action>(...)`-Aufrufe in `karteikarte-form.tsx`, `karteikarte-card.tsx`, `karteikarten-manager.tsx`, die jeweils mit `CONNECTION_ERROR`-Text abschließen), BUG-2 optional. Danach erneut `/qa` für AC30.
+- **Production Ready:** YES
+- **Recommendation:** Deploy — `/deploy` für PROJ-3
 
 ## Deployment
 _To be added by /deploy_

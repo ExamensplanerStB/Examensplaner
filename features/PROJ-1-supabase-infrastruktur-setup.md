@@ -1,8 +1,8 @@
 # PROJ-1: Supabase-Infrastruktur-Setup
 
-## Status: Approved
+## Status: Deployed
 **Created:** 2026-08-03
-**Last Updated:** 2026-08-13
+**Last Updated:** 2026-09-05
 
 ## Dependencies
 - None
@@ -343,3 +343,35 @@ Playwright-Browser-Downloads (`npx playwright install`) hängen sich in dieser S
 - BUG-5 (Low, fehlende Fehlerbehandlung in `src/proxy.ts`) — kann parallel oder vor dem nächsten Deploy-Versuch gefixt werden
 
 **Lokaler Betrieb bis dahin:** `npm run dev`, Server bei Bedarf manuell starten/stoppen (kein Dauerbetrieb/Hintergrunddienst gewünscht).
+
+### Tatsächliches Deployment (2026-09-05)
+**Produktions-URL:** https://examensplaner-v2fg.vercel.app
+**Deployed:** 2026-09-05 — Nutzer hat sich entschieden, doch bereits jetzt auf Vercel zu deployen (Kurskorrektur gegenüber der obigen Entscheidung vom 2026-08-13). Deployt wurden PROJ-1, PROJ-2 (Zentraler Themenkatalog) und PROJ-3 (Karteikarten-Hub) gemeinsam, da alle drei bereits im selben Next.js-Codebase liegen und QA-approved sind.
+
+**Pre-Deployment-Fixes:**
+- ESLint-Setup für Next.js 16 wiederhergestellt (`next lint` existiert nicht mehr; neue `eslint.config.mjs` + Lint-Script auf `eslint .` umgestellt). Hinweis: `npm run lint` hängt sich in dieser Sandbox-Umgebung auf (vermutlich langsame Verzeichnistraversierung auf dem iCloud-Drive-Pfad des Projekts, nahe 0% CPU-Auslastung über mehrere Minuten) — lokal in einer normalen Terminal-Umgebung sollte es funktionieren, wurde aber nicht End-to-End verifiziert. `npm run build` läuft davon unabhängig fehlerfrei.
+- `.gitignore`: `recovery-codes.txt` ergänzt (Nutzer hatte eine Datei mit diesem Namen unversioniert im Projektordner — vermutlich Recovery-Codes von der Vercel/GitHub-Kontoerstellung; sollte an einen sichereren Ort verschoben werden)
+- Alle drei Supabase-Migrationen (`create_profiles`, `create_themenkatalog`, `create_karteikarten`) waren zum Zeitpunkt des Deployments bereits auf dem verknüpften Live-Projekt angewendet (verifiziert per `supabase migration list`)
+
+**Vercel-Setup:** Erstimport über das Dashboard (vercel.com/new), da die Vercel-CLI in der Sandbox nicht authentifiziert werden konnte (kein Browser-OAuth möglich) und aus Sicherheitsgründen die echten Supabase-Env-Werte nicht aus `.env.local` ausgelesen wurden (Leseschutz per Permission-Regel). Nutzer hat `NEXT_PUBLIC_SUPABASE_URL`/`NEXT_PUBLIC_SUPABASE_ANON_KEY` selbst im Vercel-Dashboard eingetragen.
+
+**Bug entdeckt: Auto-Deploy-on-Push funktionierte nicht.** Nach dem Erstimport (Deploy von Commit `bd3af9c`) wurden zwei weitere Commits (`bd3af9c`→ Lint-Fix bereits enthalten, dann `a7206a5` mit den Security-Headern) zu `origin/main` gepusht, ohne dass Vercel automatisch neu deployt hat. Die Git-Verbindung in Vercel (Settings → Git) sah korrekt konfiguriert aus (Repo verbunden, `deployment_status`/`repository_dispatch` Events aktiv) — die Ursache blieb ungeklärt. **Workaround:** Ein Deploy Hook (Settings → Git → Deploy Hooks) für den `main`-Branch wurde angelegt und manuell per `curl -X POST <hook-url>` ausgelöst, um den aktuellen Stand live zu bringen. **Für künftige Deployments beobachten:** Falls ein normaler `git push` weiterhin keinen automatischen Deploy auslöst, ist das ein bekanntes offenes Problem — der Deploy Hook kann als Workaround dienen, die eigentliche Ursache sollte bei Gelegenheit im Vercel-Dashboard/Support geklärt werden.
+
+**Post-Deployment-Verifikation (automatisiert per Playwright gegen die Live-URL):**
+- `/` → korrekter Redirect zu `/login?redirect=%2F`
+- `/dashboard` ohne Session → korrekter Redirect zu `/login?redirect=%2Fdashboard`
+- Leeres Formular → Validierungsfehler, keine Netzwerkanfrage ausgelöst
+- Falsche Zugangsdaten → korrekte generische Fehlermeldung (Server Action ruft Supabase serverseitig auf — kein direkter Client-Request sichtbar, aber die korrekte Meldung statt „Verbindung fehlgeschlagen" belegt funktionierende Supabase-Anbindung inkl. Env-Variablen)
+- Keine Konsolen-Fehler, keine unbehandelten Exceptions, keine fehlgeschlagenen Requests
+- Erfolgreicher Login mit echtem Account + Logout: **vom Nutzer manuell bestätigt**
+
+**Production-Ready Essentials:**
+- Security-Headers (X-Frame-Options, X-Content-Type-Options, Referrer-Policy, HSTS) in `next.config.ts` ergänzt, lokal per `next start` und live per `curl -I` verifiziert
+- Error-Tracking: Nutzer hat sich für Vercel-eigenes Monitoring statt Sentry entschieden (kein neuer Account, keine zusätzliche Dependency) — Aktivierung in Vercel Dashboard → Monitoring liegt beim Nutzer
+- Performance/Lighthouse-Check: nicht automatisiert durchgeführt (erfordert Chrome DevTools), liegt als offener Punkt beim Nutzer
+
+**Noch offen:**
+- BUG-5 (Low, aus QA): fehlende Fehlerbehandlung um `supabase.auth.getUser()` in `src/proxy.ts`
+- `recovery-codes.txt` an einen sichereren Ort verschieben
+- Ursache für den nicht funktionierenden Auto-Deploy-on-Push klären
+- Lighthouse-Check manuell durchführen

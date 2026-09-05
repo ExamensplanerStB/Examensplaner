@@ -1,6 +1,6 @@
 # PROJ-3: Karteikarten-Hub
 
-## Status: Approved
+## Status: Deployed
 **Created:** 2026-09-02
 **Last Updated:** 2026-09-05
 
@@ -481,4 +481,5 @@ Alle Testkarten/-Themen nach Abschluss aus der Live-Datenbank entfernt (`git sta
 - **Recommendation:** Deploy — `/deploy` für PROJ-3
 
 ## Deployment
-_To be added by /deploy_
+**Produktions-URL:** https://examensplaner-v2fg.vercel.app
+**Deployed:** 2026-09-05 — gemeinsam mit PROJ-1 und PROJ-2 (selbe Next.js-Codebase, ein Deployment). Details zu Pre-Deployment-Fixes, Vercel-Setup und Verifikation siehe Deployment-Abschnitt in PROJ-1.

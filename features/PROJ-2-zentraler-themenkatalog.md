@@ -1,8 +1,8 @@
 # PROJ-2: Zentraler Themenkatalog
 
-## Status: Approved
+## Status: Deployed
 **Created:** 2026-08-13
-**Last Updated:** 2026-08-13
+**Last Updated:** 2026-09-05
 
 ## Dependencies
 - PROJ-1 (Supabase-Infrastruktur-Setup) — für Auth-Schutz der Route `/themen` und das RLS-Muster
@@ -344,4 +344,5 @@ Beim ersten `npx supabase db push` durch den Nutzer schlug die Migration fehl: `
 - **Recommendation:** Deploy (bzw. für dieses Projekt: als nächstes `/write-spec PROJ-3`, das auf PROJ-2 aufbaut — siehe Deployment-Abschnitt zur bewussten Deployment-Entscheidung aus PROJ-1)
 
 ## Deployment
-_To be added by /deploy_
+**Produktions-URL:** https://examensplaner-v2fg.vercel.app
+**Deployed:** 2026-09-05 — gemeinsam mit PROJ-1 und PROJ-3 (selbe Next.js-Codebase, ein Deployment). Details zu Pre-Deployment-Fixes, Vercel-Setup und Verifikation siehe Deployment-Abschnitt in PROJ-1.

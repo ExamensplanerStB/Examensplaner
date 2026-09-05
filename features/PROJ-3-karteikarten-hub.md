@@ -1,6 +1,6 @@
 # PROJ-3: Karteikarten-Hub
 
-## Status: In Progress
+## Status: In Review
 **Created:** 2026-09-02
 **Last Updated:** 2026-09-05
 
@@ -312,7 +312,140 @@ und über Geräte hinweg synchron.
 **Bekannte vorbestehende Tooling-Lücke (nicht PROJ-3-spezifisch, siehe PROJ-1/PROJ-2):** `npm run lint` weiterhin ohne Wirkung (fehlendes `eslint.config.js`).
 
 ## QA Test Results
-_To be added by /qa_
+
+**Tested:** 2026-09-05
+**App URL:** http://localhost:3000 (Server Actions gegen das echte, verknüpfte Supabase-Live-Projekt)
+**Tester:** QA Engineer (AI)
+**Browser:** Chromium (Desktop 1440px, Tablet 768px, Mobile 375px), WebKit (Desktop 1440px)
+**Test-Account:** vom Nutzer bereitgestellter Test-Account (nicht der persönliche Produktiv-Account)
+
+### Acceptance Criteria Status
+
+#### Zugriff & Grundgerüst
+- [x] AC1: Redirect zu `/login?redirect=%2Fkarteikarten` ohne Session — per E2E-Test verifiziert (Chromium + Mobile Safari), zusätzlich live bestätigt (kein Query-String-Opt-out)
+- [x] AC2: Eigene Karten geladen, Standardfilter (Alle Typen/Fächer, Sortierung Fällig) — live bestätigt
+- [x] AC3: Leerer Zustand „Keine Karten" bei Kontostart — live bestätigt
+
+#### Anlegen
+- [x] AC4: Themenfeld erst nach Fach-Wahl aktiv, zeigt nur Themen des gewählten Fachs
+- [x] AC5: Validierungsfehler für Fach/Typ/Frage bei leerem Formular
+- [x] AC6: Karte wird angelegt, erscheint sofort, erhält Erstbewertungs-Intervall (live: Bewertung 3 → 2 Tage ± Fuzz)
+- [x] AC7: Inline-Thema-Neuanlage über ThemaFeld funktioniert (echter `addThema`-Aufruf, Standard-Klausurrelevanz „Mittel")
+
+#### Listenansicht
+- [x] AC8: Typ-Filter (Alle/Theorie/Klausurtechnik) filtert korrekt
+- [x] AC9: Fach-Filter filtert korrekt live bestätigt. Der Sortierungs-Wechsel (Fällig/Fach) selbst wurde nicht separat live erneut durchgespielt, sondern nur per Code-Review verifiziert (einfache, bereits durch die Fach-Filter-Interaktion mitgetestete `.sort()`-Logik in `KarteikartenManager`) — geringes Risiko, aber dokumentierte Lücke
+- [x] AC10: Fehlernotiz standardmäßig verborgen
+- [x] AC11: „Fehler aufdecken"/„Fehler ausblenden" toggelt korrekt
+- [x] AC12: „Keine Fehlernotiz hinterlegt" bei leerer Notiz
+
+#### Bewertung & Intervallberechnung
+- [x] AC13: Erstbewertung mit 4/5 setzt GRADUIERUNG-Intervall (live: Bewertung 4 → 4 Tage ± Fuzz)
+- [x] AC14: Folgebewertung 5 lässt Intervall wachsen (live: 4 Tage → 9 Tage, Faktor 2,5 grob bestätigt)
+- [x] AC15: Bewertung ≤ 2 resettet auf Start-Intervall (live: von 9 Tagen auf „morgen" nach Bewertung 1)
+- [x] AC16: Bewertung 3 lässt Intervall unverändert (Faktor 1,0) — live bestätigt (Datum vor/nach identisch)
+- [x] AC17: Bewertung wird als Historieneintrag protokolliert — nicht direkt in der UI sichtbar (bewusst, siehe Out of Scope), verifiziert über 16 grüne Integrationstests, die den `karteikarten_reviews`-Insert explizit prüfen, sowie indirekt durch fehlerfreie Bewertungs-Durchläufe in der Live-Session (ein fehlgeschlagener Review-Insert hätte laut Code `CONNECTION_ERROR` ausgelöst)
+- [x] AC18: Metadaten-Edit (z.B. Quelle) ohne Bewertungsänderung lässt Intervall/Fälligkeit unverändert, kein neuer Historieneintrag (Code-Pfad verifiziert: `updateKarteikarte` ruft `bewerteKarteikarte` nur bei geänderter Bewertung auf)
+
+#### Gültigkeits-Badge
+- [x] AC19: „Gültig"-Badge bei Bewertung ≥ 4 und nicht überfällig
+- [x] AC20: „Verfallen"-Badge bei Bewertung < 4 bzw. überfällig (inkl. Karenzzeit)
+
+#### Bearbeiten & Löschen
+- [x] AC21: Bearbeiten-Formular vorausgefüllt inkl. Themenzuordnung (per Screenshot verifiziert, nachdem eine automatisierte Prüfung durch eine Selektor-Mehrdeutigkeit — Hintergrundkarte hinter dem Dialog — fälschlich „nicht sichtbar" meldete)
+- [x] AC22: Lösch-Bestätigungsdialog erscheint vor dem Entfernen
+- [x] AC23: Abbrechen im Lösch-Dialog erhält die Karte
+
+#### Fokuseinheit
+- [x] AC24: Setup zeigt Anzahl fälliger/überfälliger Karten für die gewählte Auswahl
+- [x] AC25: „Session starten" deaktiviert + Hinweistext bei 0 fälligen Karten
+- [x] AC26: „Antwort aufdecken" zeigt vorherige Fehlernotiz/Quelle oder „Keine Referenz hinterlegt" — verifiziert in der Backend-QA-Session gegen eine echte, künstlich überfällige DB-Karte
+- [x] AC27: Bewertungsstufe speichert und wechselt zur nächsten Karte — verifiziert in der Backend-QA-Session
+- [x] AC28: Abschluss-Übersicht mit Anzahl + Verteilung — verifiziert in der Backend-QA-Session
+- [x] AC29: Vorzeitiger Abbruch behält bereits bewertete Karten — in dieser Session mit zwei künstlich überfälligen Karten verifiziert: nach Bewertung der ersten Karte (Fortschritt „1/2") wurde die Session über „Schließen" statt Weiterbewerten beendet; die bewertete Karte zeigte danach sofort ihr neu berechnetes Intervall und „Gültig"-Badge. Einschränkung: die zweite (nicht bewertete) Karte konnte wegen eines Restzustands aus einem vorherigen Testlauf in derselben Session nicht sauber isoliert als „unverändert" bestätigt werden — per Code-Review ist aber sichergestellt, dass `bewerten()` ausschließlich die jeweils aktuelle Karte anfasst
+
+#### Fehler & Sicherheit
+- [ ] **AC30: BUG-1 — Verbindungsfehler-Meldung fehlt bei echtem Netzwerkausfall (siehe Bugs Found)**
+- [x] AC31: Zugriff auf `/karteikarten` ohne Session wird auf App-Ebene verweigert/umgeleitet. Kein direkter Black-Box-Test der RLS-Policies per REST-API ohne Session möglich (gleiche bewusste Grenze wie PROJ-1/PROJ-2: kein Zugriff auf den Anon-Key außerhalb der App in dieser Sandbox) — Policy-Korrektheit stattdessen per Code-Review der Migration bestätigt (`karteikarten`/`karteikarten_reviews`: `auth.uid() = user_id` auf allen vier Operationen bzw. Select/Insert; `karteikarten_themen`: Exists-Check gegen die Elternkarte)
+
+**Ergebnis: 30/31 Acceptance Criteria bestanden, 1 offener Bug (AC30)**
+
+### Edge Cases Status
+
+#### EC-1: Mehrfachbewertung derselben Karte am selben Tag
+- [x] Bestätigt: jede Bewertung zählt als eigenständiges Ereignis (mehrfach live durchgespielt: 3→4→5→1→4→3 nacheinander, jedes Mal korrekt neu berechnet)
+
+#### EC-2: Lapse-Reset auch von hohem Intervall
+- [x] Bestätigt: Intervall wuchs auf 9 Tage, fiel nach Bewertung 1 auf „morgen" (Start-Intervall) zurück
+
+#### EC-3: Zwei Tabs, kein Konflikt-Handling
+- [ ] NICHT SEPARAT LIVE GETESTET — Verhalten laut Code-Review konsistent mit der dokumentierten Konvention (kein Locking, letzte gespeicherte Aktion gewinnt), analog PROJ-1/PROJ-2 als bewusste Grenze akzeptiert
+
+#### EC-4: Themenfeld zeigt nur Themen des gewählten Fachs
+- [x] Bestätigt (Umsatzsteuer-Fach zeigte nur eigene Themen zur Auswahl)
+
+#### EC-5: Fach-Wechsel leert Themenzuordnung
+- [x] Bestätigt per Screenshot (Chip verschwand sofort nach Fach-Wechsel im Bearbeiten-Formular)
+
+#### EC-6: Extrem lange Eingaben
+- [x] Bestätigt: Frage-Textarea begrenzt Eingabe hart auf 1.000 Zeichen (`maxLength`)
+
+#### EC-7: Fokuseinheit + parallel gelöschte Karte in anderem Tab
+- [ ] NICHT SEPARAT SIMULIERT (laut Spec bewusst kein Sonderfall, Single-User, geringe Wahrscheinlichkeit) — potenziell vom selben Root Cause wie BUG-1 betroffen, falls der Löschversuch als Netzwerkfehler statt als „Zeile nicht gefunden"-Fehler auftritt; ein echtes „Zeile existiert nicht mehr" liefert dagegen einen sauberen Supabase-Error und würde korrekt als `CONNECTION_ERROR` angezeigt
+
+### Security Audit Results
+- [x] Authentication: `/karteikarten` ohne Session konsequent verweigert (E2E + live)
+- [x] Authorization (RLS): Policies per Code-Review korrekt; kein Multi-User-Black-Box-Test möglich (nur 1 Account, wie PROJ-1/PROJ-2)
+- [x] Input-Validierung / XSS: `<img src=x onerror="window.__xss_fired=true">` als Frage live angelegt — Payload wurde nicht ausgeführt (React escaped korrekt), erscheint nur als Text
+- [x] Fehlermeldungen leaken keine internen Details: alle beobachteten Fehler waren entweder Zod-Validierungsmeldungen oder die generische Verbindungsfehler-Meldung, nie rohe Supabase-/Postgres-Fehlertexte
+- [ ] Siehe BUG-2 (Low): unescapter Text in einem `aria-label` bei HTML-ähnlicher Frage — kein Sicherheitsrisiko (Attribute werden nicht als HTML interpretiert), aber ein Barrierefreiheits-Schönheitsfehler
+- Rate-Limiting: nicht Teil dieser Spec (Single-User-App, wie in PROJ-1/PROJ-2 bewusst entschieden) — kein Gap, sondern bestätigte Produktentscheidung
+
+### Regression Testing (PROJ-1/PROJ-2)
+- [x] `npm run test:e2e` weiterhin 18/18 grün (10 bestehende PROJ-1/PROJ-2-Tests + 2 neue PROJ-3-Tests je Browser-Projekt)
+- [x] PROJ-1 Dashboard lädt korrekt, zeigt E-Mail des eingeloggten Nutzers — live nachgetestet
+- [x] PROJ-2 `/themen` lädt korrekt — live nachgetestet
+- [x] „Themen verwalten"-Link von `/karteikarten` navigiert korrekt zu `/themen` (löst die in PROJ-2 offen gelassene Vorgabe ein)
+
+### Responsive & Cross-Browser
+- [x] Chromium: Desktop (1440px), Tablet (768px), Mobile (375px) — kein horizontales Overflow in Liste, Formular oder Fokuseinheit
+- [x] WebKit (Desktop 1440px): keine Console-Errors, Liste und Formular rendern korrekt
+- Hinweis: Ein scheinbarer Hintergrund-„Bleed-through" der Kartenliste unterhalb der Fokuseinheit auf Mobile-Screenshots war ein reines `fullPage`-Screenshot-Artefakt von `position: fixed`-Elementen (per Viewport-only-Screenshot widerlegt) — kein echter Layout-Bug
+
+### Automated Tests
+- **Unit-/Integrationstests (Vitest):** 87/87 grün — 23 Intervall-Algorithmus-Tests + 16 Server-Action-Tests (beide aus /frontend bzw. /backend) + 11 neue Tests für die Anzeige-Helfer (`src/lib/karteikarten.test.ts`: `gueltigkeitsStatus`, `faelligkeitsTag`, `faelligkeitsDringlichkeit`, `formatDatum`) + 37 bereits bestehende (PROJ-1/PROJ-2)
+- **E2E-Tests (Playwright):** 18/18 grün — `tests/PROJ-3-karteikarten-hub.spec.ts` (2 neue Tests: Redirect bei fehlender Session, kein Query-String-Opt-out) + 16 bestehende PROJ-1/PROJ-2-Tests, über Chromium + Mobile Safari. Bewusst nicht in die committete Suite aufgenommen: authentifizierte Abläufe (Anlegen/Bewerten/Bearbeiten/Löschen/Fokuseinheit), da dafür echte Zugangsdaten nötig wären — diese Pfade wurden stattdessen live während der QA-Session verifiziert (siehe oben), exakt wie bei PROJ-1/PROJ-2
+- `npm run build` läuft fehlerfrei durch. `npm run lint` weiterhin ohne Wirkung (vorbestehende Tooling-Lücke aus PROJ-1, nicht PROJ-3-spezifisch)
+
+### Bugs Found
+
+#### BUG-1: Echter Netzwerkfehler beim Anlegen/Bewerten/Bearbeiten/Löschen lässt die UI dauerhaft hängen, ohne die geforderte Verbindungsfehler-Meldung zu zeigen
+- **Severity:** High
+- **Steps to Reproduce:**
+  1. `/karteikarten` öffnen, eingeloggt
+  2. Netzwerk-Interception einrichten, die POST-Anfragen an `/karteikarten` (Server Actions) fehlschlagen lässt (in dieser Session per `page.route(...).abort("failed")` simuliert — entspricht z.B. einem WLAN-Aussetzer oder einer Server-Action-Anfrage, die den Server gar nicht erreicht)
+  3. Eine Karte anlegen, ODER eine Selbsteinschätzung inline ändern, ODER eine Karte löschen
+  4. Erwartet laut AC30: Meldung „Verbindung fehlgeschlagen, bitte später erneut versuchen", vorheriger Zustand bleibt sichtbar
+  5. Tatsächlich: Kein Fehlertext erscheint. Beim Anlegen bleibt der Dialog mit einem endlos drehenden Lade-Spinner auf dem „Anlegen"-Button hängen (nicht mehr bedienbar außer über Schließen-Icon). Bei der inline-Selbsteinschätzung bleibt das Auswahlfeld dauerhaft deaktiviert. Beim Löschen bleibt der Bestätigungsdialog mit deaktiviertem „Löschen"-Button hängen. Browser-Konsole zeigt einen unbehandelten Fehler: `TypeError: Failed to fetch` in `fetchServerAction`
+- **Root Cause:** Die Server Actions selbst fangen serverseitige Fehler (z.B. Supabase-Ausfälle) korrekt per `try/catch` ab und geben `{ error: "Verbindung fehlgeschlagen…" }` zurück. Ein Fehler, der bereits beim *Aufruf* der Server Action auf Client-Seite auftritt (z.B. weil die Anfrage den Server gar nicht erreicht), wirft jedoch eine JavaScript-Exception, *bevor* der serverseitige `try/catch` überhaupt erreicht wird. Keine der aufrufenden Client-Komponenten (`karteikarte-form.tsx`, `karteikarte-card.tsx`, `karteikarten-manager.tsx`, `fokuseinheit.tsx`) fängt diese Exception ab — der jeweilige Lade-Zustand (`isPending`/`isBewerten`/`isDeleting`) wird dadurch nie zurückgesetzt.
+- **Reproduziert für:** Anlegen, inline Bewerten (Listenansicht), Löschen — live einzeln bestätigt. Bearbeiten (Formular-„Speichern") nutzt denselben Code-Pfad wie Anlegen (`KarteikarteForm`) und ist nach Code-Review identisch betroffen, wurde aber nicht separat live reproduziert.
+- **Screenshot:** siehe QA-Session (Anlegen-Dialog mit hängendem Spinner, Lösch-Dialog mit deaktiviertem Button)
+- **Priority:** Fix before deployment — betrifft den Kernbedienpfad des gesamten Features unter einer realistischen Bedingung (jeder kurze Netzwerk-Aussetzer während einer Bewertung/Anlage/Löschung)
+
+#### BUG-2: Unescapter Text in `aria-label` bei HTML-ähnlicher Frage
+- **Severity:** Low
+- **Steps to Reproduce:**
+  1. Eine Karte mit einer Frage wie `<img src=x onerror="...">` anlegen
+  2. Erwartet: Screenreader liest einen sinnvollen Text vor
+  3. Tatsächlich: Das `aria-label` des Selbsteinschätzung-Selects enthält den rohen Text `Selbsteinschätzung für „<img src=x onerror="...">"` — kein Sicherheitsrisiko (Attribute werden nicht als HTML interpretiert, keine Codeausführung), aber für Screenreader-Nutzer verwirrend
+- **Priority:** Nice to have
+
+### Summary
+- **Acceptance Criteria:** 30/31 vollständig verifiziert (1 offener Bug: AC30)
+- **Bugs Found:** 2 total (1 High, 1 Low)
+- **Security:** Pass (mit dokumentierten, aus PROJ-1/PROJ-2 bekannten Grenzen: kein Multi-User-Test, kein direkter REST-Bypass-Test)
+- **Production Ready:** NO — BUG-1 (High) muss vor Deployment behoben werden, da er den Kernbedienpfad (Anlegen/Bewerten/Bearbeiten/Löschen) unter einer realistischen Netzwerkbedingung dauerhaft blockiert
+- **Recommendation:** BUG-1 in `/frontend` beheben (reine Client-seitige Fehlerbehandlung, keine Server-Action-Logik betroffen — try/catch um die vier `await <server action>(...)`-Aufrufe in `karteikarte-form.tsx`, `karteikarte-card.tsx`, `karteikarten-manager.tsx`, die jeweils mit `CONNECTION_ERROR`-Text abschließen), BUG-2 optional. Danach erneut `/qa` für AC30.
 
 ## Deployment
 _To be added by /deploy_

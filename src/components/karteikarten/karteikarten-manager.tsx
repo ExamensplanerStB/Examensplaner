@@ -24,10 +24,11 @@ import { cn } from "@/lib/utils";
 import type { Klausurtag, Thema } from "@/lib/klausurtage";
 import { addThema } from "@/app/themen/actions";
 import {
-  berechneNaechstesIntervall,
-  heuteISO,
-  naechsteFaelligkeit,
-} from "@/lib/karteikarten-intervall";
+  bewerteKarteikarte,
+  createKarteikarte,
+  deleteKarteikarte,
+  updateKarteikarte,
+} from "@/app/karteikarten/actions";
 import type { Bewertung, Karteikarte, KarteikartenTyp } from "@/lib/karteikarten";
 import type { KarteikarteFormValues } from "@/lib/schemas/karteikarte";
 
@@ -43,12 +44,6 @@ interface KarteikartenManagerProps {
 
 type TypFilter = "alle" | KarteikartenTyp;
 type SortBy = "faellig" | "fach";
-
-function neueId(): string {
-  return typeof crypto !== "undefined" && "randomUUID" in crypto
-    ? crypto.randomUUID()
-    : `k${Date.now()}-${Math.random().toString(36).slice(2)}`;
-}
 
 export function KarteikartenManager({
   klausurtage,
@@ -85,25 +80,19 @@ export function KarteikartenManager({
 
   /**
    * Einzige Stelle, die eine Selbsteinschätzung entgegennimmt — genutzt von
-   * der Listenansicht, dem Bearbeiten-Formular und der Fokuseinheit, damit
-   * alle drei Einstiegspunkte identisch rechnen (siehe Tech Design).
+   * der Listenansicht und der Fokuseinheit (das Bearbeiten-Formular ruft bei
+   * geänderter Bewertung serverseitig dieselbe Server Action auf, siehe
+   * `updateKarteikarte`), damit alle Einstiegspunkte identisch rechnen.
    */
-  function bewerten(karteId: string, bewertung: Bewertung, neueFehlernotiz?: string) {
-    setKarten((prev) =>
-      prev.map((karte) => {
-        if (karte.id !== karteId) return karte;
-        const neuesIntervall = berechneNaechstesIntervall(bewertung, karte.intervall);
-        const heute = heuteISO();
-        return {
-          ...karte,
-          bewertung,
-          intervall: neuesIntervall,
-          wdhDatum: naechsteFaelligkeit(heute, neuesIntervall),
-          wdhAnzahl: karte.wdhAnzahl + 1,
-          fehlernotiz: neueFehlernotiz !== undefined ? neueFehlernotiz : karte.fehlernotiz,
-        };
-      })
-    );
+  async function bewerten(
+    karteId: string,
+    bewertung: Bewertung,
+    neueFehlernotiz?: string
+  ): Promise<string | null> {
+    const result = await bewerteKarteikarte(karteId, bewertung, neueFehlernotiz);
+    if ("error" in result) return result.error;
+    setKarten((prev) => prev.map((k) => (k.id === karteId ? result.karte : k)));
+    return null;
   }
 
   function openCreateForm() {
@@ -117,58 +106,16 @@ export function KarteikartenManager({
   }
 
   async function handleFormSubmit(values: KarteikarteFormValues): Promise<string | null> {
-    const bewertungNum = Number(values.bewertung) as Bewertung;
-    const typ = values.typ as KarteikartenTyp;
-
     if (editingKarte) {
-      const bewertungGeaendert = bewertungNum !== editingKarte.bewertung;
-      setKarten((prev) =>
-        prev.map((karte) => {
-          if (karte.id !== editingKarte.id) return karte;
-          const basis = {
-            ...karte,
-            fachId: values.fachId,
-            typ,
-            themenIds: values.themenIds,
-            frage: values.frage,
-            quelle: values.quelle,
-            fehlernotiz: values.fehlernotiz,
-          };
-          if (!bewertungGeaendert) return basis;
-          const neuesIntervall = berechneNaechstesIntervall(bewertungNum, karte.intervall);
-          const heute = heuteISO();
-          return {
-            ...basis,
-            bewertung: bewertungNum,
-            intervall: neuesIntervall,
-            wdhDatum: naechsteFaelligkeit(heute, neuesIntervall),
-            wdhAnzahl: karte.wdhAnzahl + 1,
-          };
-        })
-      );
+      const result = await updateKarteikarte(editingKarte.id, values);
+      if ("error" in result) return result.error;
+      setKarten((prev) => prev.map((k) => (k.id === editingKarte.id ? result.karte : k)));
       return null;
     }
 
-    // Anlegen: Erstbewertung nutzt denselben Algorithmus (vorheriges
-    // Intervall = null), damit auch neue Karten sofort ein korrektes erstes
-    // Intervall erhalten.
-    const heute = heuteISO();
-    const intervall = berechneNaechstesIntervall(bewertungNum, null);
-    const neueKarte: Karteikarte = {
-      id: neueId(),
-      fachId: values.fachId,
-      typ,
-      themenIds: values.themenIds,
-      frage: values.frage,
-      quelle: values.quelle,
-      fehlernotiz: values.fehlernotiz,
-      bewertung: bewertungNum,
-      intervall,
-      wdhAnzahl: 1,
-      wdhDatum: naechsteFaelligkeit(heute, intervall),
-      createdAt: heute,
-    };
-    setKarten((prev) => [neueKarte, ...prev]);
+    const result = await createKarteikarte(values);
+    if ("error" in result) return result.error;
+    setKarten((prev) => [result.karte, ...prev]);
     return null;
   }
 
@@ -180,8 +127,13 @@ export function KarteikartenManager({
   async function confirmDelete() {
     if (!pendingDelete) return;
     setIsDeleting(true);
-    setKarten((prev) => prev.filter((k) => k.id !== pendingDelete.id));
+    const result = await deleteKarteikarte(pendingDelete.id);
     setIsDeleting(false);
+    if ("error" in result) {
+      setDeleteError(result.error);
+      return;
+    }
+    setKarten((prev) => prev.filter((k) => k.id !== pendingDelete.id));
     setPendingDelete(null);
   }
 

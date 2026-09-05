@@ -3,15 +3,20 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { KarteikartenManager } from "@/components/karteikarten/karteikarten-manager";
 import { groupFaecherByKlausurtag, type Fach, type Thema } from "@/lib/klausurtage";
-import type { Karteikarte } from "@/lib/karteikarten";
+import type { Karteikarte, KarteikartenTyp } from "@/lib/karteikarten";
 import { createClient } from "@/lib/supabase/server";
 
 export default async function KarteikartenPage() {
   const supabase = await createClient();
 
-  const [{ data: faecher }, { data: themen }] = await Promise.all([
+  const [{ data: faecher }, { data: themen }, { data: karten }, { data: kartenThemen }] = await Promise.all([
     supabase.from("faecher").select("id, kuerzel, name, klausurtag").order("name"),
     supabase.from("themen").select("id, fach_id, name, klausurrelevanz").order("name"),
+    supabase
+      .from("karteikarten")
+      .select("id, fach_id, typ, frage, quelle, fehlernotiz, bewertung, intervall, wdh_anzahl, wdh_datum, created_at")
+      .order("wdh_datum"),
+    supabase.from("karteikarten_themen").select("karteikarte_id, thema_id"),
   ]);
 
   const klausurtage = groupFaecherByKlausurtag((faecher ?? []) as Fach[]);
@@ -22,10 +27,27 @@ export default async function KarteikartenPage() {
     klausurrelevanz: row.klausurrelevanz,
   }));
 
-  // Die "karteikarten"-Tabelle existiert erst nach /backend — bis dahin
-  // startet die Kartenliste clientseitig leer (siehe Frontend Implementation
-  // Notes in PROJ-3).
-  const initialKarten: Karteikarte[] = [];
+  const themenIdsByKarte = new Map<string, string[]>();
+  (kartenThemen ?? []).forEach((row) => {
+    const liste = themenIdsByKarte.get(row.karteikarte_id) ?? [];
+    liste.push(row.thema_id);
+    themenIdsByKarte.set(row.karteikarte_id, liste);
+  });
+
+  const initialKarten: Karteikarte[] = (karten ?? []).map((row) => ({
+    id: row.id,
+    fachId: row.fach_id,
+    typ: row.typ as KarteikartenTyp,
+    themenIds: themenIdsByKarte.get(row.id) ?? [],
+    frage: row.frage,
+    quelle: row.quelle,
+    fehlernotiz: row.fehlernotiz,
+    bewertung: row.bewertung,
+    intervall: Number(row.intervall),
+    wdhAnzahl: row.wdh_anzahl,
+    wdhDatum: row.wdh_datum,
+    createdAt: row.created_at,
+  }));
 
   return (
     <main className="min-h-screen bg-background p-4 sm:p-8">

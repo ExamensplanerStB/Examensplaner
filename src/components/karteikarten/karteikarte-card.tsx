@@ -44,7 +44,7 @@ interface KarteikarteCardProps {
   karte: Karteikarte;
   fachName: string;
   themenNamen: string[];
-  onBewerten: (bewertung: Bewertung) => void;
+  onBewerten: (bewertung: Bewertung) => Promise<string | null>;
   onEdit: () => void;
   onDeleteRequest: () => void;
 }
@@ -58,10 +58,19 @@ export function KarteikarteCard({
   onDeleteRequest,
 }: KarteikarteCardProps) {
   const [revealed, setRevealed] = useState(false);
+  const [bewertungError, setBewertungError] = useState<string | null>(null);
+  const [isBewerten, setIsBewerten] = useState(false);
   const status = gueltigkeitsStatus(karte);
   const dringlichkeit = faelligkeitsDringlichkeit(karte.wdhDatum);
   const hatFehlernotiz = karte.fehlernotiz.trim().length > 0;
   const hatQuelle = karte.quelle.trim().length > 0;
+
+  async function handleBewertungChange(value: string) {
+    setIsBewerten(true);
+    const error = await onBewerten(Number(value) as Bewertung);
+    setIsBewerten(false);
+    setBewertungError(error);
+  }
 
   return (
     <div className="rounded-lg border border-border bg-card p-[18px] shadow-card">
@@ -99,10 +108,7 @@ export function KarteikarteCard({
       <div className="flex flex-wrap items-end gap-3.5">
         <div className="w-[230px] space-y-1">
           <span className="text-xs font-medium text-ink-2">Selbsteinschätzung</span>
-          <Select
-            value={String(karte.bewertung)}
-            onValueChange={(value) => onBewerten(Number(value) as Bewertung)}
-          >
+          <Select value={String(karte.bewertung)} onValueChange={handleBewertungChange} disabled={isBewerten}>
             <SelectTrigger className="h-9" aria-label={`Selbsteinschätzung für „${karte.frage}“`}>
               <SelectValue />
             </SelectTrigger>
@@ -114,6 +120,11 @@ export function KarteikarteCard({
               ))}
             </SelectContent>
           </Select>
+          {bewertungError && (
+            <p className="text-xs text-destructive" role="alert">
+              {bewertungError}
+            </p>
+          )}
         </div>
 
         <Button type="button" variant="outline" size="sm" onClick={() => setRevealed((r) => !r)}>

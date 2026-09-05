@@ -84,16 +84,23 @@ export function KarteikarteForm({
     defaultValues: leereWerte(),
   });
 
+  // Hält das zuletzt vom FORMULAR selbst gesetzte Fach fest (nicht das erste
+  // Render-Fach), damit der Fach-Wechsel-Effekt unten ein `form.reset()` beim
+  // Öffnen (Anlegen ODER Bearbeiten) nicht mit einer echten Nutzeränderung
+  // verwechselt und dabei die vorausgefüllte Themenzuordnung leert.
+  const vorherigesFachIdRef = useRef<string>("");
+
   useEffect(() => {
     if (open) {
-      form.reset(editingKarte ? werteAusKarte(editingKarte) : leereWerte());
+      const werte = editingKarte ? werteAusKarte(editingKarte) : leereWerte();
+      form.reset(werte);
+      vorherigesFachIdRef.current = werte.fachId;
       setServerError(null);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, editingKarte]);
 
   const fachId = form.watch("fachId");
-  const vorherigesFachIdRef = useRef(fachId);
   useEffect(() => {
     if (vorherigesFachIdRef.current !== fachId) {
       form.setValue("themenIds", []);

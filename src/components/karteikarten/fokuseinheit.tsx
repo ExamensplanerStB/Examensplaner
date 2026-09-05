@@ -22,7 +22,7 @@ interface FokuseinheitProps {
   karten: Karteikarte[];
   klausurtage: Klausurtag[];
   themen: Thema[];
-  onBewerten: (karteId: string, bewertung: Bewertung, neueFehlernotiz?: string) => void;
+  onBewerten: (karteId: string, bewertung: Bewertung, neueFehlernotiz?: string) => Promise<string | null>;
   onClose: () => void;
 }
 
@@ -35,6 +35,8 @@ export function Fokuseinheit({ karten, klausurtage, themen, onBewerten, onClose 
   const [revealed, setRevealed] = useState(false);
   const [notizDraft, setNotizDraft] = useState("");
   const [results, setResults] = useState<Bewertung[]>([]);
+  const [bewertungError, setBewertungError] = useState<string | null>(null);
+  const [isBewerten, setIsBewerten] = useState(false);
 
   const heute = heuteISO();
   const faecherOptionen = klausurtage.flatMap((k) => k.faecher);
@@ -56,6 +58,7 @@ export function Fokuseinheit({ karten, klausurtage, themen, onBewerten, onClose 
     setRevealed(false);
     setNotizDraft("");
     setResults([]);
+    setBewertungError(null);
     setStage("run");
   }
 
@@ -67,10 +70,17 @@ export function Fokuseinheit({ karten, klausurtage, themen, onBewerten, onClose 
       .map((id) => themen.find((t) => t.id === id)?.name)
       .filter((n): n is string => !!n) ?? [];
 
-  function bewerten(wert: Bewertung) {
-    if (!aktuelleKarte) return;
+  async function bewerten(wert: Bewertung) {
+    if (!aktuelleKarte || isBewerten) return;
     const notiz = notizDraft.trim();
-    onBewerten(aktuelleKarte.id, wert, notiz !== "" ? notiz : undefined);
+    setIsBewerten(true);
+    const error = await onBewerten(aktuelleKarte.id, wert, notiz !== "" ? notiz : undefined);
+    setIsBewerten(false);
+    if (error) {
+      setBewertungError(error);
+      return;
+    }
+    setBewertungError(null);
     setResults((prev) => [...prev, wert]);
     const naechstePos = pos + 1;
     if (naechstePos >= queue.length) {
@@ -247,7 +257,8 @@ export function Fokuseinheit({ karten, klausurtage, themen, onBewerten, onClose 
                             key={wert}
                             type="button"
                             onClick={() => bewerten(wert)}
-                            className="flex flex-col items-center gap-1 rounded-xl border border-border px-1.5 py-3.5 hover:bg-accent"
+                            disabled={isBewerten}
+                            className="flex flex-col items-center gap-1 rounded-xl border border-border px-1.5 py-3.5 hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
                           >
                             <span className="font-serif-display text-xl text-foreground">{wert}</span>
                             <span className="text-center text-[11px] font-semibold leading-tight text-ink-2">
@@ -260,6 +271,11 @@ export function Fokuseinheit({ karten, klausurtage, themen, onBewerten, onClose 
                         );
                       })}
                     </div>
+                    {bewertungError && (
+                      <p className="mt-3 text-center text-xs text-destructive" role="alert">
+                        {bewertungError}
+                      </p>
+                    )}
                   </div>
                 </div>
               )}

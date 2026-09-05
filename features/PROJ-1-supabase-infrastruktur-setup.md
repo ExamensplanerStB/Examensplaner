@@ -356,7 +356,9 @@ Playwright-Browser-Downloads (`npx playwright install`) hängen sich in dieser S
 
 **Vercel-Setup:** Erstimport über das Dashboard (vercel.com/new), da die Vercel-CLI in der Sandbox nicht authentifiziert werden konnte (kein Browser-OAuth möglich) und aus Sicherheitsgründen die echten Supabase-Env-Werte nicht aus `.env.local` ausgelesen wurden (Leseschutz per Permission-Regel). Nutzer hat `NEXT_PUBLIC_SUPABASE_URL`/`NEXT_PUBLIC_SUPABASE_ANON_KEY` selbst im Vercel-Dashboard eingetragen.
 
-**Bug entdeckt: Auto-Deploy-on-Push funktionierte nicht.** Nach dem Erstimport (Deploy von Commit `bd3af9c`) wurden zwei weitere Commits (`bd3af9c`→ Lint-Fix bereits enthalten, dann `a7206a5` mit den Security-Headern) zu `origin/main` gepusht, ohne dass Vercel automatisch neu deployt hat. Die Git-Verbindung in Vercel (Settings → Git) sah korrekt konfiguriert aus (Repo verbunden, `deployment_status`/`repository_dispatch` Events aktiv) — die Ursache blieb ungeklärt. **Workaround:** Ein Deploy Hook (Settings → Git → Deploy Hooks) für den `main`-Branch wurde angelegt und manuell per `curl -X POST <hook-url>` ausgelöst, um den aktuellen Stand live zu bringen. **Für künftige Deployments beobachten:** Falls ein normaler `git push` weiterhin keinen automatischen Deploy auslöst, ist das ein bekanntes offenes Problem — der Deploy Hook kann als Workaround dienen, die eigentliche Ursache sollte bei Gelegenheit im Vercel-Dashboard/Support geklärt werden.
+**Bug entdeckt: Auto-Deploy-on-Push funktionierte zunächst nicht.** Nach dem Erstimport (Deploy von Commit `bd3af9c`) wurden zwei weitere Commits (Lint-Fix bereits enthalten, dann `a7206a5` mit den Security-Headern) zu `origin/main` gepusht, ohne dass Vercel automatisch neu deployt hat. **Workaround zu diesem Zeitpunkt:** Ein Deploy Hook (Settings → Git → Deploy Hooks) für den `main`-Branch wurde angelegt und manuell per `curl -X POST <hook-url>` ausgelöst, um den Stand live zu bringen (2x genutzt: für die Security-Headers und für den BUG-5-Fix).
+
+**Root-Cause-Analyse (2026-09-05):** Systematisch durchgeprüft — GitHub-Repo-Webhooks-Seite (leer, aber erwartet, da Vercel App-basierte Events statt klassischer Webhooks nutzt), GitHub-App-Installation "Vercel" unter Repository access (**"All repositories"**, nicht suspendiert — kein Berechtigungsproblem), Vercel Settings → Environments (Production-Environment trackt korrekt `main` und ist korrekt an `examensplaner-v2fg.vercel.app` gebunden — keine Fehlkonfiguration). Da alle Konfigurationspunkte einwandfrei waren, wurde ein leerer Test-Commit (`786cf2a`) gepusht — **dieser hat automatisch und ohne manuellen Eingriff einen neuen Deployment ausgelöst.** Fazit: Es handelte sich um einen einmaligen/vorübergehenden Aussetzer kurz nach dem Erstimport (vermutlich Webhook-Registrierung noch nicht vollständig aktiv), keine dauerhafte Fehlkonfiguration. Auto-Deploy-on-Push funktioniert seitdem normal. Der Deploy Hook bleibt als Fallback bestehen, falls das Problem erneut auftritt.
 
 **Post-Deployment-Verifikation (automatisiert per Playwright gegen die Live-URL):**
 - `/` → korrekter Redirect zu `/login?redirect=%2F`
@@ -372,7 +374,6 @@ Playwright-Browser-Downloads (`npx playwright install`) hängen sich in dieser S
 - Performance/Lighthouse-Check: nicht automatisiert durchgeführt (erfordert Chrome DevTools), liegt als offener Punkt beim Nutzer
 
 **Noch offen:**
-- BUG-5 (Low, aus QA): fehlende Fehlerbehandlung um `supabase.auth.getUser()` in `src/proxy.ts`
 - `recovery-codes.txt` an einen sichereren Ort verschieben
-- Ursache für den nicht funktionierenden Auto-Deploy-on-Push klären
 - Lighthouse-Check manuell durchführen
+- Vercel-eigenes Monitoring in Dashboard → Monitoring aktivieren (Nutzerentscheidung, siehe oben)

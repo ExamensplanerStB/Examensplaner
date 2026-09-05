@@ -1,8 +1,8 @@
 # PROJ-3: Karteikarten-Hub
 
-## Status: Planned
+## Status: In Progress
 **Created:** 2026-09-02
-**Last Updated:** 2026-09-02
+**Last Updated:** 2026-09-05
 
 ## Dependencies
 - PROJ-1 (Supabase-Infrastruktur-Setup) — für Auth-Schutz der Hub-Route und das RLS-Muster
@@ -269,6 +269,29 @@ und über Geräte hinweg synchron.
 ### Dependencies
 - Keine neuen npm-Pakete nötig — react-hook-form, Zod und alle benötigten shadcn/ui-Komponenten (Select, Textarea, Dialog, AlertDialog, Badge, Progress, Skeleton) sind bereits aus PROJ-1/PROJ-2 im Projekt installiert
 - Supabase CLI (bereits im Einsatz) für die neue Migration
+
+## Frontend Implementation Notes (Frontend Developer)
+
+**Umgesetzt (2026-09-05):**
+- `src/lib/karteikarten-intervall.ts`: reiner, framework-unabhängiger Intervall-Algorithmus nach Berechnungsspezifikation_Kompetenzmodell.md Abschnitt 2.1–2.2 + 4 (Erstbewertung, Folgebewertung mit Faktoren 2,5/2,0/1,0, Lapse-Reset, Fuzz ±15 %, INTERVALL_MAX-Deckelung, Gültigkeits-/Karenz-Logik). Zufallsquelle für die Fuzz-Streuung ist injizierbar, damit der Algorithmus deterministisch testbar bleibt.
+- `src/lib/karteikarten-intervall.test.ts`: 23 Unit-Tests (Erstbewertung je Bewertungsstufe, Folgebewertung wächst/bleibt/resettet, INTERVALL_MAX-Cap, Fuzz-Grenzen, Rundung, Gültigkeits-Logik) — alle grün
+- `src/lib/karteikarten.ts`: Typen (`Karteikarte`, `Bewertung`, `KarteikartenTyp`), Auswahloptionen (Typ/Selbsteinschätzung) und Anzeige-Helfer (`gueltigkeitsStatus`, `faelligkeitsTag`, `faelligkeitsDringlichkeit`)
+- `src/lib/schemas/karteikarte.ts`: Zod-Schema fürs Anlegen/Bearbeiten (Frage 1–1.000 Zeichen, Quelle ≤ 200, Fehlernotiz ≤ 1.000, mind. 1 Thema)
+- `src/components/thema-feld.tsx`: die in PROJ-2 vorgesehene, wiederverwendbare Themen-Mehrfachauswahl (Chip-Eingabefeld, Tastaturnavigation, Inline-Neuanlage) — bewusst **außerhalb** von `components/karteikarten/` abgelegt, da sie unverändert an PROJ-4/PROJ-5 weitergegeben wird. Arbeitet auf Thema-IDs (nicht Namenskopien) und ruft für die Neuanlage direkt die bestehende PROJ-2-Server-Action `addThema` auf
+- `src/components/karteikarten/karteikarte-card.tsx`, `karteikarte-form.tsx`, `fokuseinheit.tsx`, `karteikarten-manager.tsx`: Listenansicht mit Filter (Typ/Fach)/Sortierung (fällig/Fach), Anlegen/Bearbeiten-Formular, Lösch-Bestätigungsdialog, Fokuseinheit (Setup → Run → Done) — alle drei Bewertungs-Einstiegspunkte (Listen-Select, Formular, Fokuseinheit-Gradebuttons) laufen über dieselbe `bewerten()`-Funktion in `KarteikartenManager`
+- `src/app/karteikarten/page.tsx`: async Server Component, lädt `faecher` + eigene `themen` **live aus dem bestehenden, bereits produktiven Supabase-Projekt** (PROJ-1/PROJ-2-Backend existiert schon) — keine Platzhalterdaten für Fach/Thema nötig, anders als PROJ-2 es zu Beginn selbst brauchte
+- Alle im Frontend sinnvoll testbaren Acceptance Criteria demonstriert: Pflichtfeld-Validierung (Fach/Typ/Frage/mind. 1 Thema), Themenfeld erst nach Fach-Wahl aktiv, Inline-Neuanlage eines Themas, Erstbewertungs-Intervall bei Neuanlage, Intervall-Wachstum/-Reset bei Folgebewertungen (live im Browser verifiziert: 2 Tage → 5 Tage bei Bewertung 5), Gültig/Verfallen-Badge nach der `gueltig()`-Formel, Fehlernotiz standardmäßig verborgen + Aufdecken-Toggle, Bearbeiten vorausgefüllt, Lösch-Bestätigungsdialog (Abbrechen erhält/Bestätigen entfernt), Fokuseinheit komplett (Setup mit Fällig-Zähler, „Session starten" deaktiviert bei 0 fälligen Karten, Run mit Aufdecken + Gradebuttons samt Fälligkeits-Vorschau, Abschluss-Verteilung), leerer Zustand „Keine Karten"
+
+**Bewusst noch nicht umgesetzt (folgt in `/backend`):**
+- Komplett lokaler React-Zustand für Karteikarten, keine echte Persistenz — Karten gehen bei Neuladen der Seite verloren; `karteikarten`, `karteikarten_themen`, `karteikarten_reviews` existieren noch nicht als Tabellen (`initialKarten` in `page.tsx` ist eine bewusst leere Platzhalter-Konstante)
+- Bewertungshistorie (`karteikarten_reviews`) wird im Frontend nirgends mitgeschrieben, da lokaler State ohnehin nicht persistiert — die Anbindung entsteht direkt mit der echten Tabelle in `/backend`
+- „Verbindung fehlgeschlagen"-Meldung (AC „Fehler & Sicherheit") kann erst mit echten Supabase-Aufrufen für Karteikarten getestet werden (analog PROJ-1/PROJ-2)
+- Lade-Skeleton ist noch nicht verdrahtet, da die Kartenliste noch nicht asynchron aus einer eigenen Tabelle lädt (analog PROJ-2 vor dessen Backend-Anbindung)
+- RLS-Verweigerung ohne Session (AC „Fehler & Sicherheit") erst testbar, sobald die drei Tabellen inkl. Policies existieren
+
+**Getestet im Browser (Playwright-Treiberskript, headless Chromium, gegen das echte verlinkte Supabase-Projekt mit einem vom Nutzer bereitgestellten Test-Account):** Desktop (1440px), Tablet (768px), Mobile (375px) — kein horizontales Overflow auf keiner Breite. Golden Path: Fach wählen → Thema per ThemaFeld inline neu anlegen (echter `addThema`-Aufruf) → Frage eingeben → anlegen → Karte erscheint mit korrektem Typ-Badge, Fach, Themen-Chip und „Verfallen"-Badge (Default-Bewertung 3 < NIVEAU_SCHWELLE 4) → inline auf 5 hochgestuft → Intervall wächst korrekt von 2 auf 5 Tage, Badge wechselt auf „Gültig" → Fehler aufdecken/ausblenden → Bearbeiten-Modal → Lösch-Dialog (Abbrechen erhält die Karte) → Löschen (entfernt sie, „Keine Karten" erscheint). Fokuseinheit zusätzlich mit einer temporär eingefügten überfälligen Testkarte durchgespielt (Setup-Fälligkeitszähler → Run → Aufdecken → Bewertungsstufe „Fast ganz" → Abschluss-Zusammenfassung mit korrekter Verteilung) — Testkarte und Test-Thema wurden danach vollständig aus Code und Live-Datenbank entfernt (`git status`/`git diff` vor dem Commit leer verifiziert). Keine Console-Errors in allen Durchläufen.
+
+**Bekannte vorbestehende Tooling-Lücke (nicht PROJ-3-spezifisch, siehe PROJ-1/PROJ-2):** `npm run lint` weiterhin ohne Wirkung (fehlendes `eslint.config.js`). `npm run build` und `npm test` (60/60, davon 23 neue Tests) laufen fehlerfrei durch. Zusätzliche Beobachtung dieser Session: `vitest` (jsdom-Environment) brauchte auf diesem iCloud-synchronisierten Projektpfad vereinzelt mehrere Anläufe, da der jsdom-Bootstrap gelegentlich das interne Vitest-Worker-Timeout reißt — reines Umgebungsphänomen dieses Rechners/Pfads, keine Code-Ursache; alle Läufe waren am Ende grün.
 
 ## QA Test Results
 _To be added by /qa_

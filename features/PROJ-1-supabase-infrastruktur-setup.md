@@ -297,6 +297,7 @@ Danach den einen Nutzer-Account manuell im Supabase-Dashboard anlegen (Authentic
   2. Da kein try/catch vorhanden ist, würde jede Anfrage (auch zu `/login` selbst) mit einer rohen 500-Fehlerseite statt der spezifizierten „Verbindung fehlgeschlagen"-Meldung enden
   3. Nicht live reproduziert (hätte funktionierende Konfiguration erfordert zu kappen), aber durch Code-Review bestätigt
 - **Priority:** Fix in next sprint
+- **Status: FIXED (2026-09-05)** — `getUser()`-Aufruf in try/catch gekapselt; wirft der Aufruf eine Exception, wird `user` als `null` behandelt (fail-closed: Nutzer wird wie ein nicht eingeloggter Zugriff auf geschützte Routen zu `/login` umgeleitet) und der Fehler wird per `console.error` geloggt (sichtbar im Vercel-Monitoring). `/login` selbst rendert bei einer Exception weiterhin normal statt mit 500 abzustürzen — der Login-Versuch dort greift dann auf die bereits bestehende „Verbindung fehlgeschlagen"-Behandlung aus BUG-6 zurück. Neue Tests in `src/proxy.test.ts` (4 Tests, inkl. 2 Regressionstests für unverändertes Verhalten). `npm test`: 95/95 grün, `npm run build` fehlerfrei.
 
 #### BUG-6: „Verbindung fehlgeschlagen"-Meldung erscheint nie — Netzwerkfehler werden wie falsche Zugangsdaten behandelt
 - **Severity:** Medium

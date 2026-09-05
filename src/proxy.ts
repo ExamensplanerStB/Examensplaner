@@ -25,9 +25,15 @@ export async function proxy(request: NextRequest) {
     }
   );
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  let user = null;
+  try {
+    const {
+      data: { user: fetchedUser },
+    } = await supabase.auth.getUser();
+    user = fetchedUser;
+  } catch (error) {
+    console.error("proxy: supabase.auth.getUser() failed", error);
+  }
 
   const isLoginRoute = request.nextUrl.pathname === "/login";
 

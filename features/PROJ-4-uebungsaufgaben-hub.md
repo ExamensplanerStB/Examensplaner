@@ -88,9 +88,9 @@
 - Aufgabe erreicht Status „Verfallen", Nutzer möchte das Thema dennoch weiter üben → keine Reaktivierung derselben Aufgabe vorgesehen, Nutzer legt bei Bedarf eine neue Aufgabe zum selben Thema an (konsistent mit Abschnitt 3 der Berechnungsspezifikation)
 
 ## Technical Requirements (optional)
-- Security: `uebungsaufgaben`-Tabelle und die (gemeinsam mit PROJ-3 genutzte) `reviews`-Tabelle sind RLS-geschützt nach dem in PROJ-1 etablierten Muster (`auth.uid() = user_id`)
+- Security: Alle neuen Tabellen sind RLS-geschützt nach dem in PROJ-1 etablierten Muster (`auth.uid() = user_id`)
 - Datenmodell: Jede Aufgabe referenziert ihre Themen über `themen.id` (Fremdschlüssel, PROJ-2-Muster), nicht über eine Namenskopie
-- Datenmodell: Jede Bewertung (Fachlich, Klausurtechnik, Fehlernotiz) wird als eigene, unveränderliche Zeile protokolliert (kein Update/Delete durch den Nutzer, nur Insert) — in derselben `reviews`-Tabelle wie PROJ-3, mit `item_typ = 'uebung'`, `bewertung` (Fachlich) und `bewertung_2` (Klausurtechnik)
+- Datenmodell: Jede Bewertung (Fachlich, Klausurtechnik, Fehlernotiz) wird als eigene, unveränderliche Zeile protokolliert (kein Update/Delete durch den Nutzer, nur Insert) — siehe Tech Design für die konkrete Tabellenstruktur
 - Wiederverwendung: Die Thema-Mehrfachauswahl nutzt die in PROJ-2/PROJ-3 etablierte `ThemaFeld`-Komponente unverändert
 - Algorithmus: Wiederholungslogik folgt `Berechnungsspezifikation_Kompetenzmodell.md`, Abschnitt 3 (Wiederholungslogik Übungsaufgaben) und Abschnitt 4 (Gültigkeitsfunktion `gueltig(uebungs_beleg)`). Relevante Default-Parameter:
 
@@ -107,7 +107,7 @@
 - Performance: Laden der Aufgabenliste < 300ms (analog PROJ-1–3)
 
 ## Open Questions
-- [ ] Zeichenlimits für Titel/Quelle/Fehlernotiz — analog PROJ-2/PROJ-3 in `/architecture` festzulegen
+- [x] Zeichenlimits für Titel/Quelle/Fehlernotiz — in `/architecture` festgelegt (siehe Technical Decisions): Titel 300, Quelle 200, Fehlernotiz 1.000 Zeichen
 
 ## Decision Log
 
@@ -128,13 +128,135 @@
 <!-- Added by /architecture -->
 | Decision | Rationale | Date |
 |----------|-----------|------|
-| _Example: localStorage over Supabase_ | _No user accounts needed; data is device-local_ | YYYY-MM-DD |
+| Eigene `uebungsaufgaben_reviews`-Tabelle statt einer geteilten `reviews`-Tabelle über alle Hubs | Weicht bewusst von der ursprünglichen Berechnungsspezifikation (Abschnitt 7) ab und folgt stattdessen dem tatsächlichen PROJ-3-Präzedenzfall (`karteikarten_reviews`): eine Fremdschlüssel-Kaskade löscht die komplette Bewertungshistorie automatisch mit, wenn die Aufgabe gelöscht wird, ohne zusätzliche Aufräum-Logik | 2026-09-06 |
+| Status wird bei jedem Laden aus den Rohdaten berechnet, nicht als Spalte gespeichert | Identisches Prinzip wie das Gültigkeits-Badge in PROJ-3: der Status kann allein durch Zeitablauf kippen (z.B. Gültig → Verfallen nach 56 Tagen), ein gespeicherter Wert würde veralten | 2026-09-06 |
+| Verknüpfungstabelle `uebungsaufgaben_themen` (Aufgabe ↔ Thema), identisches Muster zu `karteikarten_themen` | Eine Aufgabe kann laut Spezifikation mehreren Themen zugeordnet sein; volle strukturelle Wiederverwendung des in PROJ-2/PROJ-3 etablierten Musters | 2026-09-06 |
+| Zeichenlimits: Titel 300 Zeichen, Quelle 200 Zeichen, Fehlernotiz 1.000 Zeichen | Quelle/Fehlernotiz analog PROJ-3 übernommen; Titel kürzer als die Karteikarten-„Frage" (1.000) angesetzt, da ein Aufgabentitel ein kurzes Label ist, kein ausformulierter Sachverhalt | 2026-09-06 |
+| Zwei Bewertungs-Dropdowns (Fachlich, Klausurtechnik, je 1–5) statt Buttons/Radio wie bei Karteikarten | Entspricht der PRD-Bezeichnung „Zwei-Dropdown-Bewertung"; zwei unabhängige Dropdown-Felder machen die getrennte Bewertungsdimension visuell klarer als eine gemeinsame Button-Reihe | 2026-09-06 |
+| Server Actions statt eigener API-Routen, RLS-Muster 1:1 aus PROJ-1–3 | Konsistent mit dem bereits abgenommenen Muster im gesamten Projekt | 2026-09-06 |
+| `ThemaFeld`-Komponente unverändert wiederverwendet | Bereits für genau diesen Zweck in PROJ-2 vorgesehen und in PROJ-3 erstmals verwendet | 2026-09-06 |
 
 ---
 <!-- Sections below are added by subsequent skills -->
 
 ## Tech Design (Solution Architect)
-_To be added by /architecture_
+
+### Component Structure
+```
+/uebungsaufgaben (geschützte Route — Zugriff nur eingeloggt, sonst Redirect zu
+                  /login, gesichert durch die bestehende Middleware aus PROJ-1)
+└── Übungsaufgaben-Hub-Seite
+    ├── Kopfzeile: Seitentitel + Kurzbeschreibung + "Themen verwalten"-Link
+    │   (→ /themen) + "Neue Aufgabe"-Button
+    │
+    ├── Filter-/Aktionsleiste
+    │   ├── Fach-Auswahl (Dropdown, alle 11 Fächer)
+    │   ├── Status-Filter (Alle / Unbewertet / Gültig / Wiederholung fällig /
+    │   │   Verfallen / Geschlossen)
+    │   ├── Sortierung (Fälligkeit / Fach)
+    │   └── Aufgabenanzahl (Anzeige)
+    │
+    ├── Aufgabenliste
+    │   └── Je Aufgabe (Card)
+    │       ├── Kopfzeile: Fach, Themen-Chips, Status-Badge (eines der 5 Status,
+    │       │   bei "Wiederholung fällig" inkl. Datum und "überfällig"-Hinweis
+    │       │   falls das Datum in der Vergangenheit liegt)
+    │       ├── Titel (klickbar → öffnet Bearbeiten-Formular), Quelle (falls
+    │       │   vorhanden)
+    │       ├── Hinweiszeile "Erst Nacharbeit empfohlen" — nur sichtbar, wenn
+    │       │   die letzte Bewertung `worst` ≤ 2 ergab und eine Wiederholung
+    │       │   noch aussteht
+    │       ├── Aktionsreihe: "Bewerten"-Button (immer aktiv außer bei Status
+    │       │   "Geschlossen"), Bearbeiten-Icon, Löschen-Icon
+    │       └── Aufklappbarer Verlaufs-Bereich ("Bewertungshistorie anzeigen")
+    │           — listet jede bisherige Bewertung chronologisch: Datum,
+    │           Fachlich, Klausurtechnik, Fehlernotiz (oder "Keine Fehlernotiz
+    │           hinterlegt")
+    │
+    ├── Leerer Zustand ("Keine Übungsaufgaben") — wenn Filter keine Treffer
+    │   liefert
+    │
+    ├── Neue/Bearbeiten-Aufgabe-Formular (Modal)
+    │   ├── Fach-Auswahl
+    │   ├── Themenfeld (ThemaFeld-Komponente, unverändert aus PROJ-2/PROJ-3
+    │   │   übernommen) — mind. 1 Pflicht, nur Themen des gewählten Fachs
+    │   ├── Titel (Textfeld, max. 300 Zeichen)
+    │   └── Quelle (optionales Textfeld, max. 200 Zeichen)
+    │
+    ├── Bewerten-Formular (Modal, unabhängig vom Anlegen-Formular)
+    │   ├── Fachlich (Dropdown 1–5)
+    │   ├── Klausurtechnik (Dropdown 1–5)
+    │   ├── Fehlernotiz (optionales Textfeld, mehrzeilig, max. 1.000 Zeichen)
+    │   └── Speichern-Button — berechnet `worst`, setzt Status/Fälligkeit neu
+    │       und zeigt bei `worst` ≤ 2 zusätzlich einen Hinweis-Toast "Erst
+    │       Nacharbeit empfohlen"
+    │
+    ├── Lösch-Bestätigungsdialog (Abbrechen / Löschen)
+    │
+    └── Lade-/Fehlerzustände (Skeleton beim initialen Laden, "Verbindung
+        fehlgeschlagen"-Hinweis bei Netzwerkfehlern)
+```
+
+### Data Model (in plain language)
+```
+Tabelle "uebungsaufgaben" (eine Zeile pro erfasster Übungsaufgabe):
+- id
+- user_id            → verweist auf den eingeloggten Nutzer (RLS-Muster aus
+                        PROJ-1)
+- fach_id            → verweist auf "faecher" (PROJ-2)
+- titel              → Bezeichnung der Aufgabe, max. 300 Zeichen
+- quelle             → optionale Quellenangabe, max. 200 Zeichen
+- pflicht_wdh_datum  → nächste fällige Pflicht-Wiederholung (Datum), leer =
+                        keine offene Wiederholung
+- wdh_anzahl         → Anzahl bisheriger Bewertungen (0 = unbewertet, max. 3:
+                        Erstbewertung + höchstens 2 Pflicht-Wiederholungen)
+- created_at
+
+Tabelle "uebungsaufgaben_themen" (Verknüpfungstabelle, eine Aufgabe kann
+mehrere Themen haben — identisches Muster zu "karteikarten_themen"):
+- uebungsaufgabe_id  → verweist auf "uebungsaufgaben"; Löschen der Aufgabe
+                        entfernt automatisch auch diese Zuordnungen
+- thema_id           → verweist auf "themen" (PROJ-2)
+
+Tabelle "uebungsaufgaben_reviews" (unveränderliche Historie, eine Zeile pro
+Bewertungsereignis — nie aktualisiert oder einzeln gelöscht, nur beim Löschen
+der zugehörigen Aufgabe automatisch mitentfernt):
+- id
+- user_id
+- uebungsaufgabe_id  → verweist auf "uebungsaufgaben"
+- datum              → Zeitpunkt der Bewertung
+- fachlich           → vergebene Bewertung 1–5
+- klausurtechnik     → vergebene Bewertung 1–5
+- fehlernotiz        → optionale Fehleranalyse zu dieser konkreten Bewertung,
+                        max. 1.000 Zeichen, in der UI standardmäßig verborgen
+
+Der Status einer Aufgabe (Unbewertet/Gültig/Wiederholung fällig/Verfallen/
+Geschlossen) ist kein gespeichertes Feld, sondern wird beim Laden aus
+`wdh_anzahl`, `pflicht_wdh_datum` und der jüngsten Zeile aus
+"uebungsaufgaben_reviews" berechnet (Details siehe Tech Decisions).
+
+Zugriffsregel (Row Level Security) für alle drei Tabellen: identisches Muster
+wie "karteikarten"/"karteikarten_reviews" aus PROJ-1–3 — ein Nutzer sieht und
+bearbeitet ausschließlich eigene Zeilen (user_id = eingeloggter Nutzer).
+
+Gespeichert in: Supabase (PostgreSQL) — wie alle bisherigen Daten, zentral und
+über Geräte hinweg synchron.
+```
+
+### Tech Decisions (Reasoning)
+- **Eigene `uebungsaufgaben_reviews`-Tabelle statt einer geteilten `reviews`-Tabelle über alle Hubs:** Die ursprüngliche Berechnungsspezifikation (Abschnitt 7) sah eine gemeinsame `reviews`-Tabelle für alle Hubs vor. PROJ-3 ist davon bereits abgewichen und hat eine eigene `karteikarten_reviews`-Tabelle angelegt, gerade damit beim Löschen einer Karte ihre Bewertungshistorie automatisch per Fremdschlüssel-Kaskade mitgelöscht wird, ohne eigene Aufräum-Logik. PROJ-4 folgt demselben, bereits bewährten Muster.
+- **Status wird bei jedem Laden berechnet, nicht gespeichert:** Der Status kann allein durch Zeitablauf kippen (z.B. "Gültig" → "Verfallen" nach 56 Tagen), ohne dass der Nutzer etwas tut. Ein gespeicherter Wert würde sofort veralten — identisches Prinzip wie das Gültigkeits-Badge in PROJ-3. Berechnungsschema: kein Eintrag in "uebungsaufgaben_reviews" → Unbewertet; `pflicht_wdh_datum` gesetzt → Wiederholung fällig; sonst, wenn `min(fachlich, klausurtechnik)` der jüngsten Bewertung ≥ 4 und ≤ 56 Tage alt → Gültig; wenn ≥ 4 aber älter → Verfallen; wenn `wdh_anzahl` das Maximum (3) erreicht hat und die letzte Bewertung < 4 war → Geschlossen.
+- **`uebungsaufgaben_themen` als eigene Verknüpfungstabelle:** identisches Muster zu `karteikarten_themen` — eine Aufgabe kann laut Spezifikation mehreren Themen zugeordnet sein.
+- **Eine einzige serverseitige „Bewertung speichern"-Aktion:** verarbeitet Fachlich/Klausurtechnik/Fehlernotiz, berechnet `worst`, setzt `pflicht_wdh_datum` und `wdh_anzahl` neu und schreibt den Historieneintrag — ein Vorgang statt mehrerer, die auseinanderlaufen könnten.
+- **Zwei Bewertungs-Dropdowns statt Buttons/Radio (anders als Karteikarten):** entspricht der PRD-Bezeichnung „Zwei-Dropdown-Bewertung" und macht die zwei unabhängigen Bewertungsdimensionen visuell klarer als eine gemeinsame Button-Reihe.
+- **Zeichenlimits:** lösen die offene Frage aus der Spezifikation (siehe Technical Decisions) — Titel 300 (kurzes Label, kürzer als die Karteikarten-„Frage"), Quelle 200 und Fehlernotiz 1.000 Zeichen analog PROJ-3.
+- **Server Actions statt eigener API-Routen, RLS-Muster 1:1 aus PROJ-1–3:** konsistent mit dem bereits abgenommenen Muster.
+- **`ThemaFeld`-Komponente unverändert wiederverwendet:** kein PROJ-4-internes Detail, sondern genau der in PROJ-2 vorgesehene und in PROJ-3 erstmals genutzte Wiederverwendungsfall.
+- **Kein Fokuseinheit-Äquivalent:** bereits im Spec-Interview entschieden (siehe Product Decisions) — hier nur zur Vollständigkeit der Architektur bestätigt, keine zusätzliche Session-Infrastruktur nötig.
+
+### Dependencies
+- Keine neuen npm-Pakete nötig — react-hook-form, Zod und alle benötigten shadcn/ui-Komponenten (Select, Textarea, Dialog, AlertDialog, Badge, Collapsible, Skeleton, Sonner/Toast) sind bereits aus PROJ-1–3 im Projekt installiert
+- Supabase CLI (bereits im Einsatz) für die neue Migration
 
 ## QA Test Results
 _To be added by /qa_

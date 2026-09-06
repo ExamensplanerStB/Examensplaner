@@ -258,6 +258,27 @@ Gespeichert in: Supabase (PostgreSQL) — wie alle bisherigen Daten, zentral und
 - Keine neuen npm-Pakete nötig — react-hook-form, Zod und alle benötigten shadcn/ui-Komponenten (Select, Textarea, Dialog, AlertDialog, Badge, Collapsible, Skeleton, Sonner/Toast) sind bereits aus PROJ-1–3 im Projekt installiert
 - Supabase CLI (bereits im Einsatz) für die neue Migration
 
+## Frontend Implementation Notes (Frontend Developer)
+
+**Umgesetzt (2026-09-06):**
+- `src/lib/uebungsaufgaben-wiederholung.ts`: reine, framework-unabhängige Wiederholungslogik nach Berechnungsspezifikation Abschnitt 3 + 4 (`worst()`, `naechstePflichtWdh()`, `istGueltig()`). Nutzt die bereits bestehenden Datumsfunktionen `diffTage`/`heuteISO`/`naechsteFaelligkeit` aus `karteikarten-intervall.ts` (PROJ-3) statt sie zu duplizieren — reine Tagesarithmetik ohne Fuzz/Karenz, deutlich einfacher als der Karteikarten-Algorithmus
+- `src/lib/uebungsaufgaben-wiederholung.test.ts`: 12 Unit-Tests (Erstbewertung bei worst≥4/=3/≤2, 1. Wiederholung erfolgreich/erneut fällig, finale Wiederholung erfolgreich/geschlossen, Gültigkeits-Grenze bei genau 56 Tagen) — alle grün
+- `src/lib/uebungsaufgaben.ts`: Typen (`Uebungsaufgabe`, `UebungsaufgabeReview`, `UebungsaufgabenStatus`), `BEWERTUNG_OPTIONEN` (geteilt für Fachlich/Klausurtechnik), `statusVon()` (berechnet den 5-Status live, nie gespeichert) und Anzeige-Helfer (`letzteReviewVon`, `wiederholungsDringlichkeit`, `formatDatum`, `kurzerText`, `CONNECTION_ERROR`) — Letztere bewusst analog PROJ-3 dupliziert statt hub-übergreifend importiert, damit jeder Hub-Ordner in sich abgeschlossen bleibt (Präzedenzfall: `karteikarten.ts` importiert ebenfalls nichts aus anderen Hubs)
+- `src/lib/schemas/uebungsaufgabe.ts`: zwei Zod-Schemas — `uebungsaufgabeSchema` fürs Anlegen/Bearbeiten (Titel 1–300 Zeichen, Quelle ≤ 200, mind. 1 Thema) und `bewertenSchema` fürs separate Bewerten-Formular (Fachlich/Klausurtechnik je 1–5, Fehlernotiz ≤ 1.000)
+- `src/components/uebungsaufgaben/uebungsaufgabe-card.tsx`, `uebungsaufgabe-form.tsx`, `bewerten-form.tsx`, `uebungsaufgaben-manager.tsx`: Listenansicht mit Filter (Status/Fach)/Sortierung (fällig/Fach), getrenntes Anlegen- und Bewerten-Formular (zwei Dropdowns), aufklappbare Bewertungshistorie pro Aufgabe. `ThemaFeld` unverändert aus PROJ-2/PROJ-3 übernommen
+- `src/app/uebungsaufgaben/page.tsx`: async Server Component, lädt `faecher`/`themen` live aus dem produktiven Supabase-Projekt (PROJ-1/PROJ-2-Backend existiert schon); `/uebungsaufgaben` ist automatisch durch die bestehende Middleware (`src/proxy.ts`) geschützt, ohne dass dort etwas geändert werden musste
+- **Präzisierung gegenüber der Spec beim Umsetzen:** Die AC „Bewerten-Formular verfügbar bei Status Unbewertet/Wiederholung fällig" wurde wörtlich umgesetzt — der „Bewerten"-Button ist bei Gültig/Verfallen/Geschlossen deaktiviert, nicht nur bei Geschlossen. Ein „Gültig" oder „Verfallen" gewordener Beleg wird laut Berechnungsspezifikation bewusst nicht erneut bewertet; neue Evidenz entsteht über eine neue Aufgabe
+
+**Bewusst noch nicht umgesetzt (folgt in `/backend`):**
+- Komplett lokaler React-Zustand, keine echte Persistenz — Aufgaben und Bewertungen gehen bei Neuladen der Seite verloren; `uebungsaufgaben`, `uebungsaufgaben_themen`, `uebungsaufgaben_reviews` existieren noch nicht als Tabellen (`initialAufgaben`/`initialReviews` in `page.tsx` sind bewusst leere Platzhalter-Konstanten)
+- „Verbindung fehlgeschlagen"-Meldung (AC „Fehler & Sicherheit") kann erst mit echten Supabase-Aufrufen getestet werden (analog PROJ-1–3) — im lokalen State gibt es aktuell keinen Fehlerfall, der sie auslösen könnte
+- RLS-Verweigerung ohne Session (AC „Fehler & Sicherheit") erst testbar, sobald die drei Tabellen inkl. Policies existieren
+- Lade-Skeleton ist noch nicht verdrahtet, da die Aufgabenliste noch nicht asynchron aus einer eigenen Tabelle lädt
+
+**Getestet:** `npm run build` fehlerfrei (Route `/uebungsaufgaben` korrekt erzeugt), `npm test` 107/107 grün (davon 12 neue Tests). Unauthentifizierter Zugriff auf `/uebungsaufgaben` per Playwright verifiziert: korrekter Redirect zu `/login?redirect=%2Fuebungsaufgaben`, identisches Verhalten wie die bestehenden Hubs. Das interaktive Verhalten hinter dem Login (Anlegen, Bewerten-Formular, Status-Wechsel, Bewertungshistorie, Löschen) konnte ich **nicht** selbst im Browser durchklicken, da mir kein Test-Account/Passwort für das echte Supabase-Projekt vorliegt — bitte einmal selbst unter `/uebungsaufgaben` gegenprüfen (Golden Path: Fach wählen → Thema inline anlegen → Aufgabe anlegen → Bewerten mit Fachlich 3/Klausurtechnik 2 → Status sollte zu „Wiederholung fällig in 5 Tagen" mit Nacharbeit-Hinweis wechseln → Bewertungshistorie aufklappen → Löschen).
+
+**Umgebungshinweis (Ergänzung zu PROJ-3):** Das dort beschriebene Vitest-Worker-Timeout-Phänomen auf diesem iCloud-synchronisierten Projektpfad hatte diesmal eine konkret behebbare Ursache: ein verwaister `node_modules/.vite`-Cache-Ordner. `rm -rf node_modules/.vite` hat den Fehler dauerhaft behoben (nicht nur einen erneuten Anlauf gebraucht) — für künftige Sessions mit demselben Symptom zuerst prüfen, ob dieser Cache-Ordner das Problem ist, bevor mehrfach neu versucht wird. `npm run lint` weiterhin ohne Ergebnis (bekannte, vorbestehende Tooling-Lücke aus PROJ-1, unabhängig von diesem Feature).
+
 ## QA Test Results
 _To be added by /qa_
 

@@ -1,6 +1,6 @@
 # PROJ-4: Übungsaufgaben-Hub
 
-## Status: Planned
+## Status: In Progress
 **Created:** 2026-09-06
 **Last Updated:** 2026-09-06
 
@@ -278,6 +278,20 @@ Gespeichert in: Supabase (PostgreSQL) — wie alle bisherigen Daten, zentral und
 **Getestet:** `npm run build` fehlerfrei (Route `/uebungsaufgaben` korrekt erzeugt), `npm test` 107/107 grün (davon 12 neue Tests). Unauthentifizierter Zugriff auf `/uebungsaufgaben` per Playwright verifiziert: korrekter Redirect zu `/login?redirect=%2Fuebungsaufgaben`, identisches Verhalten wie die bestehenden Hubs. Das interaktive Verhalten hinter dem Login (Anlegen, Bewerten-Formular, Status-Wechsel, Bewertungshistorie, Löschen) konnte ich **nicht** selbst im Browser durchklicken, da mir kein Test-Account/Passwort für das echte Supabase-Projekt vorliegt — bitte einmal selbst unter `/uebungsaufgaben` gegenprüfen (Golden Path: Fach wählen → Thema inline anlegen → Aufgabe anlegen → Bewerten mit Fachlich 3/Klausurtechnik 2 → Status sollte zu „Wiederholung fällig in 5 Tagen" mit Nacharbeit-Hinweis wechseln → Bewertungshistorie aufklappen → Löschen).
 
 **Umgebungshinweis (Ergänzung zu PROJ-3):** Das dort beschriebene Vitest-Worker-Timeout-Phänomen auf diesem iCloud-synchronisierten Projektpfad hatte diesmal eine konkret behebbare Ursache: ein verwaister `node_modules/.vite`-Cache-Ordner. `rm -rf node_modules/.vite` hat den Fehler dauerhaft behoben (nicht nur einen erneuten Anlauf gebraucht) — für künftige Sessions mit demselben Symptom zuerst prüfen, ob dieser Cache-Ordner das Problem ist, bevor mehrfach neu versucht wird. `npm run lint` weiterhin ohne Ergebnis (bekannte, vorbestehende Tooling-Lücke aus PROJ-1, unabhängig von diesem Feature).
+
+## Backend Implementation Notes (Backend Developer)
+
+**Umgesetzt (2026-09-06):**
+- Migration `supabase/migrations/20260906132902_create_uebungsaufgaben.sql`: drei Tabellen wie im Tech Design festgelegt — `uebungsaufgaben` (fach_id, titel ≤ 300 Zeichen, quelle ≤ 200, pflicht_wdh_datum nullable, wdh_anzahl), `uebungsaufgaben_themen` (Verknüpfung, identisches Muster zu `karteikarten_themen`), `uebungsaufgaben_reviews` (unveränderliche Historie: fachlich, klausurtechnik, fehlernotiz ≤ 1.000 Zeichen). RLS auf allen drei Tabellen nach dem PROJ-1-Muster (`auth.uid() = user_id`, bei den Verknüpfungs-/Historientabellen über Exists-Checks auf die Elterntabelle). Migration erfolgreich auf das verlinkte Live-Supabase-Projekt angewendet und verifiziert (`supabase db query --linked`: alle drei Tabellen vorhanden, `relrowsecurity = true` auf allen dreien)
+- `src/app/uebungsaufgaben/actions.ts`: `createUebungsaufgabe`, `updateUebungsaufgabe` (Metadaten only, rührt `pflicht_wdh_datum`/`wdh_anzahl` nicht an), `bewerteUebungsaufgabe` (einzige Stelle, die `worst()` + `naechstePflichtWdh()` aus der reinen Wiederholungslogik anwendet, schreibt Review + aktualisiert die Aufgabe in einem Vorgang), `deleteUebungsaufgabe` — alle nach dem PROJ-3-Server-Action-Muster (Zod-Validierung, Session-Check, try/catch → `CONNECTION_ERROR`, `revalidatePath`)
+- **Technische Entscheidung beim Umsetzen:** `uebungsaufgaben_reviews.datum` ist in der DB `timestamptz` (nicht `date`) für verlässliche chronologische Sortierung, auch bei mehreren Bewertungen am selben Tag. Die reine Wiederholungslogik (`istGueltig`, `diffTage`) arbeitet aber ausschließlich mit Datums-Granularität — `toReview()` in `actions.ts` kürzt den DB-Zeitstempel deshalb auf die ersten 10 Zeichen (`YYYY-MM-DD`), bevor er ins Domänenmodell gelangt. Damit ist die DB-Spalte präzise für Sortierung/Historie, während die Berechnung so einfach bleibt wie geplant
+- `src/app/uebungsaufgaben/page.tsx`: lädt jetzt zusätzlich `uebungsaufgaben`, `uebungsaufgaben_themen` und `uebungsaufgaben_reviews` live aus Supabase (die Reviews werden geladen, da PROJ-4 anders als PROJ-3 eine sichtbare Bewertungshistorie in der UI zeigt)
+- `src/components/uebungsaufgaben/uebungsaufgaben-manager.tsx`: die drei lokalen State-Mutationen aus der Frontend-Phase (`handleFormSubmit`, `handleBewertenSubmit`, `confirmDelete`) rufen jetzt die echten Server Actions auf, mit try/catch für Netzwerkfehler (analog PROJ-3 BUG-1-Fix, von Anfang an mit eingebaut statt nachträglich gefunden)
+- `src/app/uebungsaufgaben/actions.test.ts`: 15 neue Integrationstests (Validierung ohne Supabase-Aufruf, erfolgreicher Pfad je Funktion, Verbindungsfehler bei fehlender Session/fehlgeschlagener Query) — Mock-Pattern 1:1 von `karteikarten/actions.test.ts` übernommen
+
+**Getestet:** `npm run build` fehlerfrei, `npm test` 122/122 grün (davon 15 neue Integrationstests). Migration live auf dem verlinkten Supabase-Projekt angewendet und Tabellen/RLS per SQL-Query verifiziert.
+
+**Noch nicht möglich:** Echter End-to-End-Test (Anlegen → Bewerten → Statuswechsel → Historie → Löschen gegen die echte Datenbank) — mir liegt weiterhin kein Login für das echte Supabase-Projekt vor (siehe Frontend Implementation Notes). Bitte einmal selbst durchklicken, jetzt mit echter Persistenz: Seite neu laden sollte die angelegte/bewertete Aufgabe weiterhin zeigen.
 
 ## QA Test Results
 _To be added by /qa_

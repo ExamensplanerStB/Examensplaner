@@ -3,16 +3,26 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { UebungsaufgabenManager } from "@/components/uebungsaufgaben/uebungsaufgaben-manager";
 import { groupFaecherByKlausurtag, type Fach, type Thema } from "@/lib/klausurtage";
-import type { Uebungsaufgabe, UebungsaufgabeReview } from "@/lib/uebungsaufgaben";
+import type { Bewertung, Uebungsaufgabe, UebungsaufgabeReview } from "@/lib/uebungsaufgaben";
 import { createClient } from "@/lib/supabase/server";
 
 export default async function UebungsaufgabenPage() {
   const supabase = await createClient();
 
-  const [{ data: faecher }, { data: themen }] = await Promise.all([
-    supabase.from("faecher").select("id, kuerzel, name, klausurtag").order("name"),
-    supabase.from("themen").select("id, fach_id, name, klausurrelevanz").order("name"),
-  ]);
+  const [{ data: faecher }, { data: themen }, { data: aufgaben }, { data: aufgabenThemen }, { data: reviews }] =
+    await Promise.all([
+      supabase.from("faecher").select("id, kuerzel, name, klausurtag").order("name"),
+      supabase.from("themen").select("id, fach_id, name, klausurrelevanz").order("name"),
+      supabase
+        .from("uebungsaufgaben")
+        .select("id, fach_id, titel, quelle, pflicht_wdh_datum, wdh_anzahl, created_at")
+        .order("pflicht_wdh_datum"),
+      supabase.from("uebungsaufgaben_themen").select("uebungsaufgabe_id, thema_id"),
+      supabase
+        .from("uebungsaufgaben_reviews")
+        .select("id, uebungsaufgabe_id, datum, fachlich, klausurtechnik, fehlernotiz")
+        .order("datum"),
+    ]);
 
   const klausurtage = groupFaecherByKlausurtag((faecher ?? []) as Fach[]);
   const initialThemen: Thema[] = (themen ?? []).map((row) => ({
@@ -22,10 +32,32 @@ export default async function UebungsaufgabenPage() {
     klausurrelevanz: row.klausurrelevanz,
   }));
 
-  // Die "uebungsaufgaben"-/"uebungsaufgaben_reviews"-Tabellen existieren erst
-  // nach /backend — bis dahin startet die Liste clientseitig leer.
-  const initialAufgaben: Uebungsaufgabe[] = [];
-  const initialReviews: UebungsaufgabeReview[] = [];
+  const themenIdsByAufgabe = new Map<string, string[]>();
+  (aufgabenThemen ?? []).forEach((row) => {
+    const liste = themenIdsByAufgabe.get(row.uebungsaufgabe_id) ?? [];
+    liste.push(row.thema_id);
+    themenIdsByAufgabe.set(row.uebungsaufgabe_id, liste);
+  });
+
+  const initialAufgaben: Uebungsaufgabe[] = (aufgaben ?? []).map((row) => ({
+    id: row.id,
+    fachId: row.fach_id,
+    themenIds: themenIdsByAufgabe.get(row.id) ?? [],
+    titel: row.titel,
+    quelle: row.quelle,
+    pflichtWdhDatum: row.pflicht_wdh_datum,
+    wdhAnzahl: row.wdh_anzahl,
+    createdAt: row.created_at,
+  }));
+
+  const initialReviews: UebungsaufgabeReview[] = (reviews ?? []).map((row) => ({
+    id: row.id,
+    uebungsaufgabeId: row.uebungsaufgabe_id,
+    datum: String(row.datum).slice(0, 10),
+    fachlich: row.fachlich as Bewertung,
+    klausurtechnik: row.klausurtechnik as Bewertung,
+    fehlernotiz: row.fehlernotiz,
+  }));
 
   return (
     <main className="min-h-screen bg-background p-4 sm:p-8">

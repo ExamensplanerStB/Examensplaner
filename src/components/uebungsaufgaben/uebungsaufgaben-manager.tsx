@@ -22,13 +22,17 @@ import {
 } from "@/components/ui/select";
 import type { Klausurtag, Thema } from "@/lib/klausurtage";
 import { addThema } from "@/app/themen/actions";
-import { heuteISO, naechstePflichtWdh, worst } from "@/lib/uebungsaufgaben-wiederholung";
+import {
+  bewerteUebungsaufgabe,
+  createUebungsaufgabe,
+  deleteUebungsaufgabe,
+  updateUebungsaufgabe,
+} from "@/app/uebungsaufgaben/actions";
 import {
   CONNECTION_ERROR,
   STATUS_LABEL,
   letzteReviewVon,
   statusVon,
-  type Bewertung,
   type Uebungsaufgabe,
   type UebungsaufgabeReview,
   type UebungsaufgabenStatus,
@@ -48,12 +52,6 @@ interface UebungsaufgabenManagerProps {
 
 type StatusFilter = "alle" | UebungsaufgabenStatus;
 type SortBy = "faellig" | "fach";
-
-function neueId(prefix: string): string {
-  return typeof crypto !== "undefined" && "randomUUID" in crypto
-    ? crypto.randomUUID()
-    : `${prefix}${Date.now()}-${Math.random().toString(36).slice(2)}`;
-}
 
 export function UebungsaufgabenManager({
   klausurtage,
@@ -106,35 +104,21 @@ export function UebungsaufgabenManager({
   }
 
   async function handleFormSubmit(values: UebungsaufgabeFormValues): Promise<string | null> {
-    if (editingAufgabe) {
-      setAufgaben((prev) =>
-        prev.map((a) =>
-          a.id === editingAufgabe.id
-            ? {
-                ...a,
-                fachId: values.fachId,
-                themenIds: values.themenIds,
-                titel: values.titel,
-                quelle: values.quelle,
-              }
-            : a
-        )
-      );
-      return null;
-    }
+    try {
+      if (editingAufgabe) {
+        const result = await updateUebungsaufgabe(editingAufgabe.id, values);
+        if ("error" in result) return result.error;
+        setAufgaben((prev) => prev.map((a) => (a.id === editingAufgabe.id ? result.aufgabe : a)));
+        return null;
+      }
 
-    const neueAufgabe: Uebungsaufgabe = {
-      id: neueId("u"),
-      fachId: values.fachId,
-      themenIds: values.themenIds,
-      titel: values.titel,
-      quelle: values.quelle,
-      pflichtWdhDatum: null,
-      wdhAnzahl: 0,
-      createdAt: heuteISO(),
-    };
-    setAufgaben((prev) => [neueAufgabe, ...prev]);
-    return null;
+      const result = await createUebungsaufgabe(values);
+      if ("error" in result) return result.error;
+      setAufgaben((prev) => [result.aufgabe, ...prev]);
+      return null;
+    } catch {
+      return CONNECTION_ERROR;
+    }
   }
 
   function openBewertenForm(aufgabe: Uebungsaufgabe) {
@@ -150,30 +134,21 @@ export function UebungsaufgabenManager({
   async function handleBewertenSubmit(values: BewertenFormValues): Promise<string | null> {
     if (!bewertendeAufgabe) return null;
 
-    const fachlich = Number(values.fachlich) as Bewertung;
-    const klausurtechnik = Number(values.klausurtechnik) as Bewertung;
-    const worstWert = worst(fachlich, klausurtechnik);
-    const heute = heuteISO();
-    const { pflichtWdhDatum } = naechstePflichtWdh(worstWert, bewertendeAufgabe.wdhAnzahl, heute);
+    try {
+      const result = await bewerteUebungsaufgabe(
+        bewertendeAufgabe.id,
+        Number(values.fachlich),
+        Number(values.klausurtechnik),
+        values.fehlernotiz
+      );
+      if ("error" in result) return result.error;
 
-    const neueReview: UebungsaufgabeReview = {
-      id: neueId("r"),
-      uebungsaufgabeId: bewertendeAufgabe.id,
-      datum: heute,
-      fachlich,
-      klausurtechnik,
-      fehlernotiz: values.fehlernotiz,
-    };
-
-    setReviews((prev) => [...prev, neueReview]);
-    setAufgaben((prev) =>
-      prev.map((a) =>
-        a.id === bewertendeAufgabe.id
-          ? { ...a, pflichtWdhDatum, wdhAnzahl: a.wdhAnzahl + 1 }
-          : a
-      )
-    );
-    return null;
+      setReviews((prev) => [...prev, result.review]);
+      setAufgaben((prev) => prev.map((a) => (a.id === bewertendeAufgabe.id ? result.aufgabe : a)));
+      return null;
+    } catch {
+      return CONNECTION_ERROR;
+    }
   }
 
   function requestDelete(aufgabe: Uebungsaufgabe) {
@@ -184,10 +159,20 @@ export function UebungsaufgabenManager({
   async function confirmDelete() {
     if (!pendingDelete) return;
     setIsDeleting(true);
-    setAufgaben((prev) => prev.filter((a) => a.id !== pendingDelete.id));
-    setReviews((prev) => prev.filter((r) => r.uebungsaufgabeId !== pendingDelete.id));
-    setIsDeleting(false);
-    setPendingDelete(null);
+    try {
+      const result = await deleteUebungsaufgabe(pendingDelete.id);
+      if ("error" in result) {
+        setDeleteError(result.error);
+        return;
+      }
+      setAufgaben((prev) => prev.filter((a) => a.id !== pendingDelete.id));
+      setReviews((prev) => prev.filter((r) => r.uebungsaufgabeId !== pendingDelete.id));
+      setPendingDelete(null);
+    } catch {
+      setDeleteError(CONNECTION_ERROR);
+    } finally {
+      setIsDeleting(false);
+    }
   }
 
   const gefiltert = aufgaben

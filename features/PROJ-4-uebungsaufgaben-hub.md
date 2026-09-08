@@ -294,7 +294,104 @@ Gespeichert in: Supabase (PostgreSQL) — wie alle bisherigen Daten, zentral und
 **Noch nicht möglich:** Echter End-to-End-Test (Anlegen → Bewerten → Statuswechsel → Historie → Löschen gegen die echte Datenbank) — mir liegt weiterhin kein Login für das echte Supabase-Projekt vor (siehe Frontend Implementation Notes). Bitte einmal selbst durchklicken, jetzt mit echter Persistenz: Seite neu laden sollte die angelegte/bewertete Aufgabe weiterhin zeigen.
 
 ## QA Test Results
-_To be added by /qa_
+
+**Tested:** 2026-09-08
+**App URL:** http://localhost:3000 (Dev-Server, gegen das echte verlinkte Supabase-Projekt)
+**Tester:** QA Engineer (AI)
+**Browser:** Chromium (Playwright, headless)
+**Test-Account:** dedizierter QA-Test-Account (`trashkrause@aol.com`, vom Nutzer bereitgestellt, wie schon in PROJ-1)
+
+Vorab: `npm test` (regressionsweise ausgeführt) deckte einen eigenen Bug in `src/app/uebungsaufgaben/actions.test.ts` auf — ein Test hatte das erwartete Pflicht-Wiederholungsdatum als Literal (`"2026-09-13"`) hartkodiert, statt es über die echte (separat getestete) `naechstePflichtWdh()`-Funktion relativ zum tatsächlichen Tagesdatum zu berechnen. Der Test wäre an jedem neuen Tag fehlgeschlagen, obwohl die Anwendungslogik korrekt war. **Behoben** (Testcode, kein Anwendungsbug) — `npm test` läuft seitdem wieder grün.
+
+### Acceptance Criteria Status
+
+#### Zugriff & Grundgerüst
+- [x] Nicht eingeloggter Zugriff auf `/uebungsaufgaben` → Redirect zu `/login?redirect=%2Fuebungsaufgaben` (live verifiziert)
+- [x] Eingeloggt → eigene Aufgaben laden, Default-Filter/Sortierung (alle Fächer, alle Status, sortiert nach Fälligkeit)
+- [x] Keine Aufgaben (für aktuellen Filter) → „Keine Übungsaufgaben" statt leerer Liste
+
+#### Anlegen
+- [x] Fach wählen → Themenfeld aktiv, nur Themen dieses Fachs, inkl. Inline-Neuanlage
+- [x] Fehlende Pflichtfelder → Speichern verhindert, Validierungsfehlermeldungen erscheinen
+- [x] Gültige Eingabe → Aufgabe mit Status „Unbewertet" angelegt, erscheint sofort in der Liste
+
+#### Bewertung & Wiederholungslogik
+- [x] Bewerten-Formular verfügbar bei „Unbewertet"/„Wiederholung fällig", unabhängig vom Fälligkeitsdatum
+- [x] `worst ≥ 4` → Status „Gültig", Bewerten-Button danach gesperrt
+- [x] `worst = 3` (Erstbewertung) → „Wiederholung fällig am [+7 Tage]", kein Nacharbeit-Hinweis
+- [x] `worst ≤ 2` (Erstbewertung) → „Wiederholung fällig am [+5 Tage]" **mit** „Erst Nacharbeit empfohlen"-Hinweis
+- [x] Wiederholung bewertet, jetzt `worst ≥ 4` → Status „Gültig"
+- [x] Wiederholung bewertet, weiterhin `worst ≤ 3` → finale Wiederholung in 21 Tagen gesetzt
+- [ ] **BUG (siehe BUG-1):** Nach der finalen (2.) Wiederholung mit weiterhin `worst ≤ 3` sollte Status „Geschlossen" erscheinen — zeigt stattdessen „Verfallen". Bewerten-Button ist trotzdem korrekt gesperrt (funktional kein Schaden, aber falsches Label)
+- [x] Jede Bewertung wird als eigener, unveränderlicher Historieneintrag protokolliert (inkl. Fehlernotiz)
+
+#### Fehlernotiz
+- [x] Verborgen bis „Bewertungshistorie anzeigen" geklickt wird
+- [x] Aufgedeckt: alle bisherigen Bewertungen chronologisch mit Fehlernotiz sichtbar
+
+#### Listenansicht & Status-Badge
+- [x] Status-Filter zeigt alle 6 Optionen (Alle, Unbewertet, Gültig, Wiederholung fällig, Verfallen, Geschlossen)
+- [x] Fach-Filter, Sortierung funktionieren
+- [x] Badges zeigen korrekten Status (mit der einen Ausnahme aus BUG-1)
+
+#### Bearbeiten & Löschen
+- [x] Bearbeiten-Formular vorausgefüllt (Fach/Thema/Titel/Quelle), keine Bewertungsfelder enthalten
+- [x] Löschen zeigt Bestätigungsdialog; Abbrechen lässt Aufgabe unverändert; Löschen entfernt sie inkl. Historie
+
+#### Fehler & Sicherheit
+- [ ] NICHT LIVE GETESTET: „Verbindung fehlgeschlagen"-Meldung bei Netzwerkfehler (hätte die funktionierende lokale Konfiguration unterbrechen müssen — Code-Review bestätigt identisches try/catch-Muster wie PROJ-3, dort bereits verifiziert)
+- [x] RLS: Live bestätigt, dass alle drei Tabellen `relrowsecurity = true` haben; Policy-Struktur per Code-Review geprüft (kein SELECT/INSERT/UPDATE/DELETE ohne `auth.uid() = user_id`-Bedingung bzw. Exists-Check auf die Elterntabelle) — kein Live-Test mit zwei echten Nutzer-Sessions durchgeführt (wie schon bei PROJ-1–3, außerhalb des sinnvollen Testrahmens für eine Single-User-App)
+
+### Edge Cases Status
+
+#### EC-1: Verfallen nach Ablauf der 56-Tage-Gültigkeit
+- [x] Verifiziert per Unit-Test (`istGueltig`, Grenzfall exakt bei 56 Tagen) mit injiziertem Datum — kein Live-Test möglich, da reale 56 Tage nicht abwartbar sind. Die zugrunde liegende Funktion ist isoliert und deterministisch getestet, das Risiko einer abweichenden Live-Berechnung ist gering
+
+#### EC-2: Mehrere Bewertungen am selben Tag
+- [x] `letzteReviewVon()` bevorzugt bei gleichem Datum den zuletzt gespeicherten Eintrag (Code-Review + Unit-Test-Logik bestätigt)
+
+#### EC-3: Fach-Wechsel leert nicht mehr passende Themenzuordnung
+- [x] Verifiziert (identischer, bereits in PROJ-3 getesteter Mechanismus)
+
+#### EC-4: Geschlossene Aufgabe erneut bewerten
+- [x] Bewerten-Button korrekt gesperrt (siehe AC oben) — auch wenn das Badge selbst fälschlich „Verfallen" statt „Geschlossen" zeigt (BUG-1), der Lock-Mechanismus selbst funktioniert
+
+### Security Audit Results
+- [x] Authentication: `/uebungsaufgaben` ohne Session nicht erreichbar
+- [x] Authorization (RLS): alle drei neuen Tabellen RLS-aktiv, Policy-Struktur korrekt (siehe oben)
+- [x] Input-Validierung: `<script>`-Payload im Titel-Feld wird von React korrekt escaped, kein Skript-Ausführung, kein `dangerouslySetInnerHTML` im gesamten Feature
+- [x] Server-seitige Validierung: alle vier Server Actions validieren mit Zod bzw. expliziten Wertebereichs-Checks (Fachlich/Klausurtechnik 1–5), unabhängig vom Client
+- [x] Keine Secrets im Code; Test-Zugangsdaten wurden nur temporär als Umgebungsvariable verwendet, nie committed
+- [x] Rate-Limiting: bewusst nicht implementiert (Produktentscheidung aus PROJ-1, gilt projektweit)
+
+### Bugs Found
+
+#### BUG-1: Status „Geschlossen" wird nie angezeigt — zeigt stattdessen „Verfallen"
+- **Severity:** Medium
+- **Betroffene Datei:** `src/lib/uebungsaufgaben.ts`, Funktion `statusVon()`
+- **Steps to Reproduce:**
+  1. Neue Übungsaufgabe anlegen
+  2. Erstbewertung mit `worst ≤ 3` (z.B. Fachlich 2, Klausurtechnik 3) → Pflicht-Wiederholung in 5 Tagen
+  3. Diese Wiederholung sofort bewerten (das Formular ist jederzeit verfügbar), weiterhin `worst ≤ 3` → finale Wiederholung in 21 Tagen
+  4. Diese finale Wiederholung ebenfalls mit `worst ≤ 3` bewerten
+  5. Erwartet: Status „Geschlossen" (laut AC und Berechnungsspezifikation Abschnitt 3 — `UEB_WDH_MAX` ausgeschöpft)
+  6. Tatsächlich: Status zeigt „Verfallen"
+- **Root Cause:** `statusVon()` unterscheidet nur zwischen `unbewertet` / `wiederholung_faellig` / `gueltig` / `verfallen` — der Fall „`pflicht_wdh_datum` ist `null` UND `worst < NIVEAU_SCHWELLE` UND die Wiederholungen sind ausgeschöpft" fällt in denselben Zweig wie „war einmal gültig, ist aber abgelaufen" (`istGueltig()` liefert in beiden Fällen `false`, aus unterschiedlichen Gründen). Die Funktion `naechstePflichtWdh()` berechnet das `geschlossen`-Flag zwar korrekt, dieses wird aber in `bewerteUebungsaufgabe()` (`src/app/uebungsaufgaben/actions.ts`) beim Destructuring verworfen (`const { pflichtWdhDatum } = naechstePflichtWdh(...)`) und nirgends persistiert oder an `statusVon()` weitergegeben.
+- **Auswirkung:** Der Bewerten-Button ist trotzdem korrekt gesperrt (`bewertenGesperrt` deckt sowohl „verfallen" als auch „geschlossen" ab), es entsteht also kein funktionaler Schaden oder Sicherheitsrisiko — aber die Statusanzeige ist fachlich falsch und würde spätere Features (PROJ-7 Wiederholungsplan, PROJ-8 Kompetenzanalyse), die vermutlich zwischen „Verfallen" (ggf. neu bewertbar) und „Geschlossen" (nur über eine neue Aufgabe lösbar) unterscheiden müssen, mit falschen Daten versorgen.
+- **Priority:** Fix before deployment (einfacher, lokal begrenzter Fix: `wdh_anzahl` muss in die Statusberechnung einfließen, z.B. „geschlossen", wenn `pflicht_wdh_datum === null` UND `worst < NIVEAU_SCHWELLE` UND `wdh_anzahl` das Maximum erreicht hat)
+
+### Automatisierte Tests
+- **Unit-/Integrationstests:** `npm test` — 122/122 grün (12 Tests Wiederholungslogik, 15 Tests Server Actions, Rest bestehende Suite unverändert). Ein Test-Bug (hartkodiertes Datum) während dieser QA-Runde gefunden und behoben (siehe oben)
+- **Build:** `npm run build` — fehlerfrei, Route `/uebungsaufgaben` korrekt erzeugt
+- **Live-Test:** Automatisiertes Playwright-Skript (lokal, nicht committed, da mit echten Test-Zugangsdaten) gegen das echte Supabase-Projekt — 21/22 Prüfungen bestanden, einzige Abweichung ist BUG-1. Testdaten wurden im Skript selbst wieder gelöscht (verifiziert: 0 QA-Testaufgaben verblieben); das bereits vorhandene Test-Datum des Nutzers („Steuerpflicht") wurde nicht angerührt
+- **Regression:** `/karteikarten`, `/themen`, `/dashboard` weiterhin korrekt durch Middleware geschützt (307 → `/login`), keine Beeinträchtigung durch PROJ-4
+
+### Summary
+- **Acceptance Criteria:** 20/21 vollständig verifiziert (1 Bug, siehe BUG-1); 2 Punkte bewusst nicht live testbar (Verbindungsfehler, echte Zwei-Nutzer-RLS-Prüfung), beide durch Code-Review bzw. Analogie zu bereits verifizierten PROJ-1–3-Mustern abgedeckt
+- **Bugs Found:** 1 total (1 Medium)
+- **Security:** Pass — keine Findings
+- **Production Ready:** NOT YET — BUG-1 sollte vor `/deploy` behoben werden (Medium, kein Blocker für weitere Entwicklung, aber fachlich falsch und mit Auswirkung auf künftige Features)
+- **Recommendation:** BUG-1 in `/backend` oder `/frontend` beheben (liegt in `src/lib/uebungsaufgaben.ts`, einer reinen Logikdatei ohne UI-Anteil), danach erneut `/qa` für eine gezielte Nachprüfung von BUG-1
 
 ## Deployment
 _To be added by /deploy_

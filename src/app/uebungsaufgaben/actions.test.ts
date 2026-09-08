@@ -1,6 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { naechstePflichtWdh } from "@/lib/uebungsaufgaben-wiederholung";
 
 const CONNECTION_ERROR = "Verbindung fehlgeschlagen, bitte später erneut versuchen";
+// Erwartete Termine über die echte (separat getestete) Berechnungsfunktion
+// ermittelt statt hardcodiert — sonst bricht der Test an jedem neuen Tag,
+// weil bewerteUebungsaufgabe() intern das reale heuteISO() verwendet.
+const WDH_IN_7_TAGEN = naechstePflichtWdh(3, 0).pflichtWdhDatum;
 
 function chain(result: unknown) {
   const obj: Record<string, unknown> = {};
@@ -246,7 +251,7 @@ describe("bewerteUebungsaufgabe", () => {
         fach_id: "ust",
         titel: "Titel",
         quelle: "",
-        pflicht_wdh_datum: "2026-09-13",
+        pflicht_wdh_datum: WDH_IN_7_TAGEN,
         wdh_anzahl: 1,
         created_at: "2026-09-01T00:00:00.000Z",
       },
@@ -263,10 +268,10 @@ describe("bewerteUebungsaufgabe", () => {
 
     expect("aufgabe" in result).toBe(true);
     if ("aufgabe" in result) {
-      expect(result.aufgabe.pflichtWdhDatum).toBe("2026-09-13");
+      expect(result.aufgabe.pflichtWdhDatum).toBe(WDH_IN_7_TAGEN);
     }
     expect(update.update).toHaveBeenCalledWith(
-      expect.objectContaining({ pflicht_wdh_datum: "2026-09-13", wdh_anzahl: 1 })
+      expect.objectContaining({ pflicht_wdh_datum: WDH_IN_7_TAGEN, wdh_anzahl: 1 })
     );
   });
 

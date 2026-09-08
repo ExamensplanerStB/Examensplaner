@@ -1,8 +1,8 @@
 # PROJ-5: Probeklausuren-Hub
 
-## Status: Approved
+## Status: Deployed
 **Created:** 2026-09-09
-**Last Updated:** 2026-09-09
+**Last Updated:** 2026-09-08
 
 ## Dependencies
 - PROJ-1 (Supabase-Infrastruktur-Setup) — für Auth-Schutz der Hub-Route und das RLS-Muster
@@ -397,4 +397,10 @@ Keine. Die beiden während `/frontend` gefundenen Bugs (`useFieldArray`-Synchron
 - **Recommendation:** Deploy
 
 ## Deployment
-_To be added by /deploy_
+- **Production URL:** https://examensplaner-v2fg.vercel.app/probeklausuren
+- **Deployed:** 2026-09-08
+- **Deployment method:** Auto-Deploy on Push (Vercel Git-Integration) — der Code war bereits über die Commits aus `/frontend` (`a53cdeb`) und `/backend` (`aa63b82`) live, die QA-Dokumentation (`a0e6483`) hat keinen Anwendungscode geändert
+- **Pre-Deployment Checks:** `npm run build` lokal erfolgreich (Route `/probeklausuren` korrekt erzeugt), keine Secrets im Repo (`git ls-files | grep env` zeigt nur `.env.local.example`), Datenbank-Migration bereits während `/backend` live auf dem verlinkten Supabase-Projekt angewendet und verifiziert (`npm run lint` bleibt wie seit PROJ-1 dokumentiert nicht funktionsfähig/hängend auf diesem iCloud-Pfad, nicht blockierend)
+- **Post-Deployment Verification:** Live gegen die Produktions-URL getestet (dediziertes, danach wieder gelöschtes Playwright-Skript, Zugangsdaten nur als Umgebungsvariable, nicht committed) — 7/7 Checks bestanden: nicht eingeloggter Redirect zu `/login`, erfolgreicher Login, Seiteninhalt sichtbar, Klausur-Anlage inkl. Teil erfolgreich, **Persistenz nach Reload gegen die echte Produktions-Datenbank bestätigt**, Löschen erfolgreich, keine Console-Errors
+- **Security Headers:** bereits seit PROJ-1 in `next.config.ts` konfiguriert (X-Frame-Options, X-Content-Type-Options, Referrer-Policy, HSTS) — keine Änderung durch PROJ-5 nötig
+- **Git Tag:** `v1.2.0-PROJ-5`

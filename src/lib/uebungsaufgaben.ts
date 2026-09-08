@@ -1,4 +1,4 @@
-import { diffTage, heuteISO, istGueltig, worst } from "./uebungsaufgaben-wiederholung";
+import { PARAMETER, diffTage, heuteISO, istGueltig, worst } from "./uebungsaufgaben-wiederholung";
 
 export type Bewertung = 1 | 2 | 3 | 4 | 5;
 
@@ -60,6 +60,11 @@ export function statusVon(
   if (!letzteReview) return "unbewertet";
   if (aufgabe.pflichtWdhDatum !== null) return "wiederholung_faellig";
   const w = worst(letzteReview.fachlich, letzteReview.klausurtechnik);
+  // naechstePflichtWdh() setzt pflichtWdhDatum nur in zwei Fällen auf null:
+  // worst >= NIVEAU_SCHWELLE (erfolgreich) oder UEB_WDH_MAX ausgeschöpft
+  // (geschlossen). Ist pflichtWdhDatum hier bereits null UND worst zu
+  // niedrig, kann also nur Letzteres zutreffen (BUG-1 aus QA).
+  if (w < PARAMETER.NIVEAU_SCHWELLE) return "geschlossen";
   return istGueltig(w, letzteReview.datum, heute) ? "gueltig" : "verfallen";
 }
 

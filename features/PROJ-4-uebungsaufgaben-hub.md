@@ -1,8 +1,8 @@
 # PROJ-4: Übungsaufgaben-Hub
 
-## Status: In Progress
+## Status: In Review
 **Created:** 2026-09-06
-**Last Updated:** 2026-09-06
+**Last Updated:** 2026-09-08
 
 ## Dependencies
 - PROJ-1 (Supabase-Infrastruktur-Setup) — für Auth-Schutz der Hub-Route und das RLS-Muster
@@ -379,6 +379,7 @@ Vorab: `npm test` (regressionsweise ausgeführt) deckte einen eigenen Bug in `sr
 - **Root Cause:** `statusVon()` unterscheidet nur zwischen `unbewertet` / `wiederholung_faellig` / `gueltig` / `verfallen` — der Fall „`pflicht_wdh_datum` ist `null` UND `worst < NIVEAU_SCHWELLE` UND die Wiederholungen sind ausgeschöpft" fällt in denselben Zweig wie „war einmal gültig, ist aber abgelaufen" (`istGueltig()` liefert in beiden Fällen `false`, aus unterschiedlichen Gründen). Die Funktion `naechstePflichtWdh()` berechnet das `geschlossen`-Flag zwar korrekt, dieses wird aber in `bewerteUebungsaufgabe()` (`src/app/uebungsaufgaben/actions.ts`) beim Destructuring verworfen (`const { pflichtWdhDatum } = naechstePflichtWdh(...)`) und nirgends persistiert oder an `statusVon()` weitergegeben.
 - **Auswirkung:** Der Bewerten-Button ist trotzdem korrekt gesperrt (`bewertenGesperrt` deckt sowohl „verfallen" als auch „geschlossen" ab), es entsteht also kein funktionaler Schaden oder Sicherheitsrisiko — aber die Statusanzeige ist fachlich falsch und würde spätere Features (PROJ-7 Wiederholungsplan, PROJ-8 Kompetenzanalyse), die vermutlich zwischen „Verfallen" (ggf. neu bewertbar) und „Geschlossen" (nur über eine neue Aufgabe lösbar) unterscheiden müssen, mit falschen Daten versorgen.
 - **Priority:** Fix before deployment (einfacher, lokal begrenzter Fix: `wdh_anzahl` muss in die Statusberechnung einfließen, z.B. „geschlossen", wenn `pflicht_wdh_datum === null` UND `worst < NIVEAU_SCHWELLE` UND `wdh_anzahl` das Maximum erreicht hat)
+- **Status: FIXED (2026-09-08)** — `statusVon()` prüft jetzt `worst < NIVEAU_SCHWELLE` explizit, bevor auf `istGueltig()` zurückgegriffen wird. Kein zusätzlicher `wdh_anzahl`-Vergleich nötig: `naechstePflichtWdh()` setzt `pflicht_wdh_datum` nachweislich nur in genau zwei Fällen auf `null` (Erfolg `worst ≥ 4` oder ausgeschöpfte Wiederholungen) — ist `pflicht_wdh_datum` an dieser Stelle bereits `null` und `worst` zu niedrig, kann also nur Letzteres zutreffen. Neuer Test in `src/lib/uebungsaufgaben.test.ts` (5 Tests für `statusVon()`, inkl. direktem BUG-1-Regressionstest) — `npm test`: 127/127 grün. Live erneut gegen das echte Supabase-Projekt mit dem QA-Test-Account verifiziert: identischer Reproduktionsablauf (Erstbewertung → Wiederholung → finale Wiederholung, je `worst ≤ 3`) zeigt jetzt korrekt „Geschlossen" statt „Verfallen"; Testdaten danach wieder entfernt.
 
 ### Automatisierte Tests
 - **Unit-/Integrationstests:** `npm test` — 122/122 grün (12 Tests Wiederholungslogik, 15 Tests Server Actions, Rest bestehende Suite unverändert). Ein Test-Bug (hartkodiertes Datum) während dieser QA-Runde gefunden und behoben (siehe oben)

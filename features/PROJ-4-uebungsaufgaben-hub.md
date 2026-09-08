@@ -1,6 +1,6 @@
 # PROJ-4: Übungsaufgaben-Hub
 
-## Status: In Review
+## Status: Approved
 **Created:** 2026-09-06
 **Last Updated:** 2026-09-08
 
@@ -322,7 +322,7 @@ Vorab: `npm test` (regressionsweise ausgeführt) deckte einen eigenen Bug in `sr
 - [x] `worst ≤ 2` (Erstbewertung) → „Wiederholung fällig am [+5 Tage]" **mit** „Erst Nacharbeit empfohlen"-Hinweis
 - [x] Wiederholung bewertet, jetzt `worst ≥ 4` → Status „Gültig"
 - [x] Wiederholung bewertet, weiterhin `worst ≤ 3` → finale Wiederholung in 21 Tagen gesetzt
-- [ ] **BUG (siehe BUG-1):** Nach der finalen (2.) Wiederholung mit weiterhin `worst ≤ 3` sollte Status „Geschlossen" erscheinen — zeigt stattdessen „Verfallen". Bewerten-Button ist trotzdem korrekt gesperrt (funktional kein Schaden, aber falsches Label)
+- [x] **Nachgetestet 2026-09-08, BUG-1 behoben:** Nach der finalen (2.) Wiederholung mit weiterhin `worst ≤ 3` zeigt die Aufgabe jetzt korrekt Status „Geschlossen" (siehe BUG-1 für Fix-Details)
 - [x] Jede Bewertung wird als eigener, unveränderlicher Historieneintrag protokolliert (inkl. Fehlernotiz)
 
 #### Fehlernotiz
@@ -332,7 +332,7 @@ Vorab: `npm test` (regressionsweise ausgeführt) deckte einen eigenen Bug in `sr
 #### Listenansicht & Status-Badge
 - [x] Status-Filter zeigt alle 6 Optionen (Alle, Unbewertet, Gültig, Wiederholung fällig, Verfallen, Geschlossen)
 - [x] Fach-Filter, Sortierung funktionieren
-- [x] Badges zeigen korrekten Status (mit der einen Ausnahme aus BUG-1)
+- [x] Badges zeigen korrekten Status (inkl. „Geschlossen", nachgetestet nach BUG-1-Fix)
 
 #### Bearbeiten & Löschen
 - [x] Bearbeiten-Formular vorausgefüllt (Fach/Thema/Titel/Quelle), keine Bewertungsfelder enthalten
@@ -354,7 +354,7 @@ Vorab: `npm test` (regressionsweise ausgeführt) deckte einen eigenen Bug in `sr
 - [x] Verifiziert (identischer, bereits in PROJ-3 getesteter Mechanismus)
 
 #### EC-4: Geschlossene Aufgabe erneut bewerten
-- [x] Bewerten-Button korrekt gesperrt (siehe AC oben) — auch wenn das Badge selbst fälschlich „Verfallen" statt „Geschlossen" zeigt (BUG-1), der Lock-Mechanismus selbst funktioniert
+- [x] Bewerten-Button korrekt gesperrt (siehe AC oben); Badge zeigt seit dem BUG-1-Fix ebenfalls korrekt „Geschlossen"
 
 ### Security Audit Results
 - [x] Authentication: `/uebungsaufgaben` ohne Session nicht erreichbar
@@ -384,15 +384,23 @@ Vorab: `npm test` (regressionsweise ausgeführt) deckte einen eigenen Bug in `sr
 ### Automatisierte Tests
 - **Unit-/Integrationstests:** `npm test` — 122/122 grün (12 Tests Wiederholungslogik, 15 Tests Server Actions, Rest bestehende Suite unverändert). Ein Test-Bug (hartkodiertes Datum) während dieser QA-Runde gefunden und behoben (siehe oben)
 - **Build:** `npm run build` — fehlerfrei, Route `/uebungsaufgaben` korrekt erzeugt
-- **Live-Test:** Automatisiertes Playwright-Skript (lokal, nicht committed, da mit echten Test-Zugangsdaten) gegen das echte Supabase-Projekt — 21/22 Prüfungen bestanden, einzige Abweichung ist BUG-1. Testdaten wurden im Skript selbst wieder gelöscht (verifiziert: 0 QA-Testaufgaben verblieben); das bereits vorhandene Test-Datum des Nutzers („Steuerpflicht") wurde nicht angerührt
+- **Live-Test:** Automatisiertes Playwright-Skript (lokal, nicht committed, da mit echten Test-Zugangsdaten) gegen das echte Supabase-Projekt — 21/22 Prüfungen bestanden, einzige Abweichung war BUG-1. Testdaten wurden im Skript selbst wieder gelöscht (verifiziert: 0 QA-Testaufgaben verblieben); das bereits vorhandene Test-Datum des Nutzers („Steuerpflicht") wurde nicht angerührt
 - **Regression:** `/karteikarten`, `/themen`, `/dashboard` weiterhin korrekt durch Middleware geschützt (307 → `/login`), keine Beeinträchtigung durch PROJ-4
 
+### Nachtest 2026-09-08 (BUG-1-Fix)
+Nach dem Fix in `statusVon()` (siehe BUG-1) erneut per Playwright-Skript gegen das echte Supabase-Projekt geprüft, 5/5 Prüfungen bestanden:
+- Exakter Reproduktionsablauf aus BUG-1 (Erstbewertung → Wiederholung → finale Wiederholung, je `worst ≤ 3`) → Status zeigt jetzt korrekt „Geschlossen", nicht mehr „Verfallen"
+- Bewerten-Button bei „Geschlossen" weiterhin korrekt gesperrt
+- Regressionsspotcheck der beiden benachbarten, vom Fix nicht betroffenen Zweige: `worst ≥ 4` → weiterhin „Gültig"; `worst = 3` bei Erstbewertung → weiterhin „Wiederholung fällig" (kein Seiteneffekt durch den Fix)
+- Keine Konsolenfehler; Testdaten danach vollständig entfernt (0 verblieben)
+- `npm test`: 127/127 grün (5 neue Tests für `statusVon()`, siehe BUG-1); `npm run build`: fehlerfrei
+
 ### Summary
-- **Acceptance Criteria:** 20/21 vollständig verifiziert (1 Bug, siehe BUG-1); 2 Punkte bewusst nicht live testbar (Verbindungsfehler, echte Zwei-Nutzer-RLS-Prüfung), beide durch Code-Review bzw. Analogie zu bereits verifizierten PROJ-1–3-Mustern abgedeckt
-- **Bugs Found:** 1 total (1 Medium)
+- **Acceptance Criteria:** 21/21 vollständig verifiziert; 2 Punkte bewusst nicht live testbar (Verbindungsfehler, echte Zwei-Nutzer-RLS-Prüfung), beide durch Code-Review bzw. Analogie zu bereits verifizierten PROJ-1–3-Mustern abgedeckt
+- **Bugs Found:** 1 total (1 Medium) — **gefixt und nachgetestet, keine offenen Bugs**
 - **Security:** Pass — keine Findings
-- **Production Ready:** NOT YET — BUG-1 sollte vor `/deploy` behoben werden (Medium, kein Blocker für weitere Entwicklung, aber fachlich falsch und mit Auswirkung auf künftige Features)
-- **Recommendation:** BUG-1 in `/backend` oder `/frontend` beheben (liegt in `src/lib/uebungsaufgaben.ts`, einer reinen Logikdatei ohne UI-Anteil), danach erneut `/qa` für eine gezielte Nachprüfung von BUG-1
+- **Production Ready:** YES — kein Bug mehr offen, alle Acceptance Criteria live gegen das echte Projekt verifiziert
+- **Recommendation:** Deploy. BUG-1-Fix ist minimal und lokal begrenzt (eine Logikdatei, kein UI-Eingriff), Regressionsrisiko gering und durch Spotcheck bestätigt
 
 ## Deployment
 _To be added by /deploy_

@@ -18,7 +18,7 @@
 | PROJ-1 | Supabase-Infrastruktur-Setup — Projekt-Setup, Env-Variablen, DB-Schema-Grundgerüst, Auth (E-Mail+Passwort), RLS | P0 | None | Deployed | [Spec](PROJ-1-supabase-infrastruktur-setup.md) | 2026-07-28 |
 | PROJ-2 | Zentraler Themenkatalog — fachbezogene Themen (Mehrfachauswahl), Klausurrelevanz-Einstufung, eigene Verwaltungsseite `/themen`, von allen Hubs referenziert | P0 | PROJ-1 | Deployed | [Spec](PROJ-2-zentraler-themenkatalog.md) | 2026-07-28 |
 | PROJ-3 | Karteikarten-Hub — Typ Theorie/Klausurtechnik, Selbsteinschätzung mit adaptiver Wiederholungslogik (Berechnungsspezifikation_Kompetenzmodell.md), Fokuseinheit, verborgene Fehlernotizen | P0 | PROJ-1, PROJ-2 | Deployed | [Spec](PROJ-3-karteikarten-hub.md) | 2026-07-28 |
-| PROJ-4 | Übungsaufgaben-Hub — Zwei-Dropdown-Bewertung (Fachlich/Klausurtechnik), adaptive Wiederholungslogik, getrennte Fehleranalyse | P0 | PROJ-1, PROJ-2 | In Review | [Spec](PROJ-4-uebungsaufgaben-hub.md) | 2026-07-28 |
+| PROJ-4 | Übungsaufgaben-Hub — Zwei-Dropdown-Bewertung (Fachlich/Klausurtechnik), adaptive Wiederholungslogik, getrennte Fehleranalyse | P0 | PROJ-1, PROJ-2 | Approved | [Spec](PROJ-4-uebungsaufgaben-hub.md) | 2026-07-28 |
 | PROJ-5 | Probeklausuren-Hub — Drei-Stufen-Nacharbeitsmodell (fachlich, analytisch, Nachschreiben nach 75 Tagen) | P0 | PROJ-1, PROJ-2 | Roadmap | — | 2026-07-28 |
 | PROJ-6 | Todo-Liste — Aufgaben/Fristen, ganztägig/Zeitslot, kalenderverzahnt | P0 | PROJ-1 | Roadmap | — | 2026-07-28 |
 | PROJ-7 | Wiederholungsplan — hub-übergreifende Aggregation fälliger/geplanter Wiederholungen, Filter, Ampelfarben | P0 | PROJ-3, PROJ-4, PROJ-5 | Roadmap | — | 2026-07-28 |

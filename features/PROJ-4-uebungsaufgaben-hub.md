@@ -1,8 +1,8 @@
 # PROJ-4: Übungsaufgaben-Hub
 
-## Status: Approved
+## Status: Deployed
 **Created:** 2026-09-06
-**Last Updated:** 2026-09-08
+**Last Updated:** 2026-09-09
 
 ## Dependencies
 - PROJ-1 (Supabase-Infrastruktur-Setup) — für Auth-Schutz der Hub-Route und das RLS-Muster
@@ -403,4 +403,19 @@ Nach dem Fix in `statusVon()` (siehe BUG-1) erneut per Playwright-Skript gegen d
 - **Recommendation:** Deploy. BUG-1-Fix ist minimal und lokal begrenzt (eine Logikdatei, kein UI-Eingriff), Regressionsrisiko gering und durch Spotcheck bestätigt
 
 ## Deployment
-_To be added by /deploy_
+
+**Produktions-URL:** https://examensplaner-v2fg.vercel.app/uebungsaufgaben
+**Deployed:** 2026-09-09
+**Git-Tag:** `v1.1.0-PROJ-4`
+
+**Pre-Deployment-Checks:** `npm run build` fehlerfrei, alle 4 Migrationen (inkl. `20260906132902_create_uebungsaufgaben.sql`) bereits während `/backend` live auf das Supabase-Projekt angewendet, keine neuen Env-Variablen nötig (nutzt dieselbe Supabase-Verbindung wie PROJ-1–3), Arbeitsbaum sauber und vollständig gepusht (0 ahead/behind `origin/main`).
+
+**Deployment-Ablauf:** Kein Erstdeployment — Vercel-Projekt und Auto-Deploy-on-Push bestehen bereits seit PROJ-1–3. Auto-Deploy hat diesmal beim regulären Push zuverlässig ausgelöst (der einmalige Aussetzer direkt nach dem Erstimport, siehe PROJ-1 Deployment-Notizen, ist nicht wieder aufgetreten) — kein manueller Deploy Hook nötig.
+
+**Post-Deployment-Verifikation:**
+- `/uebungsaufgaben`, `/karteikarten`, `/themen`, `/dashboard` liefern alle korrekt `307` → `/login` für nicht eingeloggte Zugriffe
+- Security-Headers (`X-Frame-Options`, `X-Content-Type-Options`, `Strict-Transport-Security`) weiterhin korrekt gesetzt
+- Nutzer hat den obersten Vercel-Deployment-Eintrag (Commit `27396b7`, entspricht dem Approved-Stand nach BUG-1-Fix) bestätigt
+- Authentifizierter Golden Path (Anlegen/Bewerten/Statuswechsel/Löschen) bereits während `/qa` live gegen dasselbe Supabase-Projekt verifiziert — keine erneute Live-Anmeldung für dieses Deployment nötig, da Frontend/Backend-Code identisch zum QA-geprüften Stand ist
+
+**Production-Ready Essentials:** Bereits projektweit aus PROJ-1 vorhanden (Security-Headers, Vercel-eigenes Monitoring) — keine PROJ-4-spezifischen Ergänzungen nötig.

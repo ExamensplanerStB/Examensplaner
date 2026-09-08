@@ -1,6 +1,6 @@
 # PROJ-5: Probeklausuren-Hub
 
-## Status: Planned
+## Status: In Progress
 **Created:** 2026-09-09
 **Last Updated:** 2026-09-09
 
@@ -257,7 +257,29 @@ und über Geräte hinweg synchron.
 - Supabase CLI (bereits im Einsatz) für die neue Migration
 
 ## Frontend Implementation Notes (Frontend Developer)
-_To be added by /frontend_
+
+**Umgesetzt (2026-09-09):**
+- `src/lib/klausuren-berechnung.ts`: reine Berechnungsfunktionen nach Berechnungsspezifikation Abschnitt 1 + 6 (`nachschreibenFaellig()`, `istBestanden()`), nutzt die bestehenden Datumsfunktionen `diffTage`/`heuteISO` aus `karteikarten-intervall.ts` statt sie zu duplizieren
+- `src/lib/klausuren-berechnung.test.ts`: 7 Unit-Tests (Nachschreiben-Grenzfall bei genau 75 Tagen, Bestehensquote-Grenzfall bei genau 40 %, Division-durch-0-Schutz)
+- `src/lib/klausuren.ts`: Typen (`Klausur`, `KlausurTeil`, `KlausurStatus`), `statusVon()`, `gesamtPunkteVon()` (Summe nur bei vollständigen Teilen), `bestandenVon()`, `faecherVon()` (Vereinigung der Teile-Fächer) — alle live berechnet, nie gespeichert (siehe Tech Design)
+- `src/lib/klausuren.test.ts`: 12 Unit-Tests, u.a. ein Test, der explizit zeigt, dass die Bestehensquote über ALLE Teile gemeinsam berechnet wird (nicht pro Teil einzeln)
+- `src/lib/schemas/klausur.ts`: `klausurSchema` (Bezeichnung, Datum ≤ heute, Quelle, Note, Stufe-1-/Stufe-2-Text, mind. 1 Teil) und `teilSchema` (Fach, Themen optional, Max-/Erreichte-Punkte als validierte String-Felder mit Cross-Field-Check `erreichte ≤ max`)
+- `src/components/probeklausuren/klausur-card.tsx`, `klausur-form.tsx`, `probeklausuren-manager.tsx`: Listenansicht mit Fach-/Status-Filter, wiederholbare Teile-Liste im Formular via `useFieldArray`, Status-/Bestanden-Badges, Nachschreiben-Hinweis mit Erledigt-Button, aufklappbare Nacharbeit-Anzeige (immer sichtbarer Text, kein Verbergen-Mechanismus, siehe Decision Log)
+- `src/app/probeklausuren/page.tsx`: async Server Component, lädt `faecher`/`themen` live aus dem produktiven Supabase-Projekt; `/probeklausuren` ist automatisch durch die bestehende Middleware geschützt
+
+**Zwei echte Bugs beim Testen gefunden und sofort behoben:**
+1. **`useFieldArray` + `form.reset()` synchronisieren sich nicht zuverlässig** — beim ersten Öffnen des Anlegen-Formulars wurde intern kurzzeitig ein zusätzliches Teil erzeugt (bekannte react-hook-form-Eigenheit). Fix: zusätzlich `replace()` aus `useFieldArray` beim Öffnen/Editieren aufrufen, nicht nur `form.reset()`. (Hinweis: Ein erster Verdacht auf Duplizierung stellte sich beim Nachprüfen als Fehler im Test-Skript selbst heraus — Playwright `getByLabel('Fach')` matcht ohne `exact: true` auch „Fach**liche** Nacharbeit" als Teilstring; der tatsächliche `replace()`-Fix war trotzdem notwendig und korrekt, siehe unten.)
+2. **Bezeichnung war nicht klickbar zum Bearbeiten** — anders als bei Karteikarten/Übungsaufgaben (Konsistenzlücke). Fix: `onClick={onEdit}` auf das Bezeichnungs-Element ergänzt, analog zum etablierten Muster.
+
+**Bewusst noch nicht umgesetzt (folgt in `/backend`):**
+- Komplett lokaler React-Zustand, keine echte Persistenz — Klausuren und Teile gehen bei Neuladen der Seite verloren; `klausuren`, `klausur_teile`, `klausur_teile_themen` existieren noch nicht als Tabellen (`initialKlausuren`/`initialTeile` in `page.tsx` sind bewusst leere Platzhalter-Konstanten)
+- „Verbindung fehlgeschlagen"-Meldung (AC „Fehler & Sicherheit") kann erst mit echten Supabase-Aufrufen getestet werden (analog PROJ-1–4)
+- RLS-Verweigerung ohne Session erst testbar, sobald die drei Tabellen inkl. Policies existieren
+- Lade-Skeleton ist noch nicht verdrahtet, da die Klausurliste noch nicht asynchron aus einer eigenen Tabelle lädt
+
+**Getestet:** `npm run build` fehlerfrei (Route `/probeklausuren` korrekt erzeugt), `npm test` 146/146 grün (davon 19 neue Tests). **Vollständiger Golden Path live im Browser getestet** (Production-Build, mit dem QA-Test-Account eingeloggt, gegen den bereits existierenden Themenkatalog): Klausur mit zwei Teilen unterschiedlicher Fächer (Erbschaftsteuer + Umsatzsteuer) anlegen → beide Fach-Badges sichtbar → Punkte nur bei einem Teil eintragen → Status „Korrektur ausstehend" → Punkte beim zweiten Teil nachtragen → Status wechselt zu „Korrigiert", Gesamtpunkte korrekt summiert (12+15=27 von 20+30=50), „Bestanden"-Badge bei 54 % erscheint → Validierungsfehler bei Erreichte-Punkte > Max-Punkte → kein Nachschreiben-Hinweis bei aktuellem Datum → Löschen mit Abbrechen/Bestätigen. 15/15 Prüfungen bestanden, keine Konsolenfehler. (Die Teile-Themenzuordnung selbst wurde aus Zeitgründen nicht im Live-Skript abgedeckt, folgt aber exakt der bereits in PROJ-3/PROJ-4 verifizierten `ThemaFeld`-Komponente unverändert.)
+
+**Umgebungshinweis:** `npm run lint` weiterhin ohne Ergebnis (bekannte, vorbestehende Tooling-Lücke aus PROJ-1, unabhängig von diesem Feature).
 
 ## Backend Implementation Notes (Backend Developer)
 _To be added by /backend_

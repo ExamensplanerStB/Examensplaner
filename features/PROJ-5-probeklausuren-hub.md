@@ -96,7 +96,7 @@
 - Performance: Laden der Klausurliste < 300ms (analog PROJ-1–4)
 
 ## Open Questions
-- [ ] Zeichenlimits für Bezeichnung/Quelle/Note/Stufe-1-/Stufe-2-Text — analog PROJ-2–4 in `/architecture` festzulegen
+- [x] Zeichenlimits für Bezeichnung/Quelle/Note/Stufe-1-/Stufe-2-Text — in `/architecture` festgelegt (siehe Technical Decisions): Bezeichnung 200, Quelle 200, Note 50, Stufe-1-/Stufe-2-Text je 2.000 Zeichen
 
 ## Decision Log
 
@@ -120,13 +120,141 @@
 <!-- Added by /architecture -->
 | Decision | Rationale | Date |
 |----------|-----------|------|
-| _Example: localStorage over Supabase_ | _No user accounts needed; data is device-local_ | YYYY-MM-DD |
+| Drei Tabellen (`klausuren`, `klausur_teile`, `klausur_teile_themen`) statt zwei wie in PROJ-3/PROJ-4 | Ein Teil braucht eigene Punkte-Felder (Max-/Erreichte-Punkte), ist also mehr als eine reine Zuordnung wie eine Themen-Verknüpfung — eigene Tabelle mit Fremdschlüssel auf die Klausur nötig, plus separate m:n-Verknüpfung für die Themen je Teil | 2026-09-09 |
+| Mindestens-1-Teil-Regel auf Anwendungsebene (Zod + UI), keine DB-Constraint | Einfacher umzusetzen, für eine Single-User-App ausreichend robust, analog zu anderen bereits akzeptierten Geschäftsregeln im Projekt | 2026-09-09 |
+| Gesamt-Punkte, Status, Bestanden-Badge und Nachschreiben-Fälligkeit werden live berechnet, nicht gespeichert | Identisches Prinzip wie die Gültigkeits-Badges in PROJ-3/PROJ-4 — die Nachschreiben-Fälligkeit hängt vom aktuellen Datum ab und würde als gespeicherter Wert sofort veralten | 2026-09-09 |
+| Reine Kalkulationsfunktionen als eigene, isoliert testbare Datei (analog `karteikarten-intervall.ts`/`uebungsaufgaben-wiederholung.ts`), unter Wiederverwendung der bestehenden `diffTage`/`heuteISO`-Datumsfunktionen | Konsistenz mit dem etablierten Muster, vermeidet doppelte Datums-Parsing-Logik | 2026-09-09 |
+| Zeichenlimits: Bezeichnung 200, Quelle 200, Note 50, Stufe-1-/Stufe-2-Text je 2.000 Zeichen | Bezeichnung/Quelle analog PROJ-2–4 übernommen; Note bewusst kurz (kein Fließtext, nur Notenangabe); Stufe-1/2-Text deutlich großzügiger als eine einzelne Fehlernotiz, da hier eine ganze Klausur reflektiert wird | 2026-09-09 |
+| Server Actions statt eigener API-Routen, RLS-Muster 1:1 aus PROJ-1–4 | Konsistent mit dem bereits abgenommenen Muster im gesamten Projekt | 2026-09-09 |
+| `ThemaFeld`-Komponente unverändert wiederverwendet, einmal pro Teil | Bereits für genau diesen Zweck in PROJ-2 vorgesehen | 2026-09-09 |
 
 ---
 <!-- Sections below are added by subsequent skills -->
 
 ## Tech Design (Solution Architect)
-_To be added by /architecture_
+
+### Component Structure
+```
+/probeklausuren (geschützte Route — Zugriff nur eingeloggt, sonst Redirect zu
+                 /login, gesichert durch die bestehende Middleware aus PROJ-1)
+└── Probeklausuren-Hub-Seite
+    ├── Kopfzeile: Seitentitel + Kurzbeschreibung + "Themen verwalten"-Link
+    │   (→ /themen) + "Neue Klausur"-Button
+    │
+    ├── Filter-/Aktionsleiste
+    │   ├── Fach-Auswahl (Dropdown, alle 11 Fächer — matcht Klausuren, bei
+    │   │   denen mindestens ein Teil dieses Fach hat)
+    │   ├── Status-Filter (Alle / Korrektur ausstehend / Korrigiert)
+    │   └── Klausurenanzahl (Anzeige)
+    │
+    ├── Klausurliste (Standard: nach Datum absteigend sortiert)
+    │   └── Je Klausur (Card)
+    │       ├── Kopfzeile: Bezeichnung, Datum, Fach-Badges (Vereinigung der
+    │       │   Fächer aller Teile), Status-Badge ("Korrektur ausstehend" /
+    │       │   "Korrigiert"), bei "Korrigiert" zusätzlich "Bestanden"/
+    │       │   "Nicht bestanden"-Badge, ggf. Hinweiszeile "Nachschreiben
+    │       │   fällig seit [Datum]"
+    │       ├── Teile-Übersicht (kompakt, eine Zeile je Teil): Fach,
+    │       │   Themen-Chips, Punkte ("12 / 20" oder "—" wenn noch offen)
+    │       ├── Note (falls eingetragen), Quelle (falls vorhanden)
+    │       ├── Aktionsreihe: "Nachschreiben erledigt"-Button (ausgeblendet,
+    │       │   sobald erledigt), Bearbeiten-Icon, Löschen-Icon
+    │       └── Aufklappbarer Bereich "Nacharbeit anzeigen" — Stufe-1- und
+    │           Stufe-2-Text direkt sichtbar (kein Verbergen-Mechanismus,
+    │           siehe Decision Log), oder "Noch keine Notiz" je Stufe
+    │
+    ├── Leerer Zustand ("Keine Probeklausuren") — wenn Filter keine Treffer
+    │   liefert
+    │
+    ├── Neue/Bearbeiten-Klausur-Formular (Modal, größer als bei PROJ-3/4 wegen
+    │   der Teile-Liste)
+    │   ├── Bezeichnung (Textfeld, max. 200 Zeichen)
+    │   ├── Datum (Datumsfeld, nicht in der Zukunft)
+    │   ├── Quelle (optionales Textfeld, max. 200 Zeichen)
+    │   ├── Teile (wiederholbare Liste, mind. 1, "+ Teil hinzufügen"):
+    │   │   je Teil Fach-Auswahl, Themenfeld (ThemaFeld, erst nach Fach
+    │   │   aktiv, optional), Max-Punkte (optional Zahl), Erreichte-Punkte
+    │   │   (optional Zahl), "Teil entfernen"-Icon (deaktiviert bei nur
+    │   │   noch einem verbleibenden Teil)
+    │   ├── Note (optionales Textfeld, max. 50 Zeichen)
+    │   ├── Stufe 1 – Fachliche Nacharbeit (optionales Textfeld, max. 2.000
+    │   │   Zeichen)
+    │   └── Stufe 2 – Analytische Nacharbeit (optionales Textfeld, max.
+    │       2.000 Zeichen)
+    │
+    ├── Lösch-Bestätigungsdialog (Abbrechen / Löschen)
+    │
+    └── Lade-/Fehlerzustände (Skeleton beim initialen Laden, "Verbindung
+        fehlgeschlagen"-Hinweis bei Netzwerkfehlern)
+```
+
+### Data Model (in plain language)
+```
+Tabelle "klausuren" (eine Zeile pro erfasster Probeklausur):
+- id
+- user_id            → verweist auf den eingeloggten Nutzer (RLS-Muster aus
+                        PROJ-1)
+- bezeichnung        → z.B. "ErbSt-02", max. 200 Zeichen
+- datum              → Klausurdatum, darf nicht in der Zukunft liegen
+- quelle             → optionale Quellenangabe, max. 200 Zeichen
+- note               → optionale, manuell eingetragene Note, max. 50 Zeichen
+- stufe1_text        → optionale fachliche Nacharbeit, max. 2.000 Zeichen
+- stufe2_text        → optionale analytische Nacharbeit, max. 2.000 Zeichen
+- nachschreiben_erledigt → true/false, Standard false
+- created_at
+
+Tabelle "klausur_teile" (mind. 1 Zeile pro Klausur, ein Teil deckt ein Fach
+mit eigenen Punkten ab — ermöglicht sowohl den 1-Fach-Fall als auch
+kombinierte Klausurtage mit mehreren Fächern):
+- id
+- klausur_id         → verweist auf "klausuren"; Löschen der Klausur entfernt
+                        automatisch auch alle ihre Teile
+- fach_id            → verweist auf "faecher" (PROJ-2)
+- max_punkte         → optional, Zahl (zunächst evtl. unbekannt)
+- erreichte_punkte   → optional, Zahl, muss ≤ max_punkte sein (sobald beide
+                        gesetzt sind)
+
+Tabelle "klausur_teile_themen" (Verknüpfungstabelle, ein Teil kann mehrere
+Themen haben — identisches Muster zu "karteikarten_themen"/
+"uebungsaufgaben_themen"):
+- teil_id            → verweist auf "klausur_teile"; Löschen des Teils
+                        entfernt automatisch auch diese Zuordnungen
+- thema_id           → verweist auf "themen" (PROJ-2)
+
+Folgende Werte sind nicht gespeichert, sondern werden beim Laden live
+berechnet (identisches Prinzip wie die Status-Badges in PROJ-3/PROJ-4 —
+zeitabhängige Werte würden als gespeicherter Wert sonst veralten):
+- Gesamt-Max-/Erreichte-Punkte = Summe der Teile, nur wenn ALLE Teile
+  vollständige Punkte haben
+- Status = "Korrigiert" (alle Teile vollständig) sonst "Korrektur ausstehend"
+- Bestanden = Gesamtquote ≥ BESTEHEN_QUOTE (40 %), nur relevant bei
+  "Korrigiert"
+- Nachschreiben fällig = heute ≥ Klausurdatum + 75 Tage UND
+  nachschreiben_erledigt ist false
+
+Zugriffsregel (Row Level Security) für alle drei Tabellen: identisches
+Muster wie in PROJ-1–4 — "klausuren" direkt über user_id, "klausur_teile"
+und "klausur_teile_themen" über einen Exists-Check entlang der Elternkette
+bis zu "klausuren.user_id" (bei "klausur_teile_themen" zweistufig: Teil →
+Klausur → Nutzer).
+
+Gespeichert in: Supabase (PostgreSQL) — wie alle bisherigen Daten, zentral
+und über Geräte hinweg synchron.
+```
+
+### Tech Decisions (Reasoning)
+- **Drei Tabellen statt zwei (anders als PROJ-3/PROJ-4):** Ein Teil braucht eigene Punkte-Felder, ist also mehr als eine reine Zuordnung — deshalb eine eigenständige `klausur_teile`-Tabelle mit Fremdschlüssel auf die Klausur, plus eine zusätzliche `klausur_teile_themen`-Verknüpfungstabelle für die Mehrfachauswahl der Themen pro Teil.
+- **Mindestens-1-Teil-Regel auf Anwendungsebene (Zod + UI), nicht als Datenbank-Constraint:** einfacher umzusetzen, für eine Single-User-App ausreichend robust — analog dazu, wie auch andere Geschäftsregeln in PROJ-1–4 nicht als DB-Constraints, sondern in der Anwendungslogik durchgesetzt werden.
+- **Gesamt-Punkte, Status, Bestanden-Badge und Nachschreiben-Fälligkeit werden bei jedem Laden live berechnet, nie gespeichert:** identisches Prinzip wie die Gültigkeits-Badges in PROJ-3/PROJ-4 — insbesondere die Nachschreiben-Fälligkeit hängt vom aktuellen Datum ab und würde als gespeicherter Wert sofort veralten.
+- **Reine Kalkulationsfunktionen (Nachschreiben-Fälligkeit, Bestanden-Berechnung, Status) als eigene, isoliert testbare Datei** — folgt demselben Muster wie `karteikarten-intervall.ts` (PROJ-3) und `uebungsaufgaben-wiederholung.ts` (PROJ-4), inkl. Wiederverwendung der bereits vorhandenen Datumsfunktionen (`diffTage`, `heuteISO`) statt sie erneut zu implementieren.
+- **Kaskadierendes Löschen (Klausur → Teile → Themenzuordnung):** eine Klausur zu löschen entfernt automatisch alle Teile und deren Themenzuordnung, ohne zusätzliche Aufräum-Logik — identisches Prinzip wie bei allen bisherigen Hubs.
+- **Zeichenlimits:** Bezeichnung 200 und Quelle 200 (analog PROJ-2–4), Note 50 (kurzer Text/Zahl wie „4,5" oder „ausreichend", kein Fließtext), Stufe-1-/Stufe-2-Text je 2.000 Zeichen (deutlich mehr als eine einzelne Fehlernotiz in PROJ-3/PROJ-4, da hier eine ganze Klausur reflektiert wird, nicht nur eine einzelne Frage). Löst die offene Frage aus der Spezifikation (siehe Technical Decisions).
+- **Server Actions statt eigener API-Routen, RLS-Muster 1:1 aus PROJ-1–4:** konsistent mit dem bereits abgenommenen Muster im gesamten Projekt.
+- **`ThemaFeld`-Komponente unverändert wiederverwendet, einmal pro Teil:** kein PROJ-5-internes Detail, sondern der in PROJ-2 vorgesehene Wiederverwendungsfall.
+
+### Dependencies
+- Keine neuen npm-Pakete nötig — react-hook-form (inkl. `useFieldArray` für die wiederholbare Teile-Liste), Zod und alle benötigten shadcn/ui-Komponenten (Select, Input, Textarea, Dialog, AlertDialog, Badge, Collapsible, Skeleton) sind bereits aus PROJ-1–4 im Projekt installiert
+- Supabase CLI (bereits im Einsatz) für die neue Migration
 
 ## Frontend Implementation Notes (Frontend Developer)
 _To be added by /frontend_

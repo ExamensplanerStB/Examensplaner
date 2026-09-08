@@ -282,7 +282,18 @@ und über Geräte hinweg synchron.
 **Umgebungshinweis:** `npm run lint` weiterhin ohne Ergebnis (bekannte, vorbestehende Tooling-Lücke aus PROJ-1, unabhängig von diesem Feature).
 
 ## Backend Implementation Notes (Backend Developer)
-_To be added by /backend_
+
+**Umgesetzt (2026-09-08):**
+- Migration `supabase/migrations/20260908210808_create_klausuren.sql`: drei Tabellen wie im Tech Design festgelegt — `klausuren` (Bezeichnung, Datum, Quelle, Note, Stufe-1-/Stufe-2-Text, Nachschreiben-Flag), `klausur_teile` (Fach + optionale Max-/Erreichte-Punkte, DB-seitiger Check `erreichte ≤ max` als Verteidigung in der Tiefe zusätzlich zur Zod-Validierung), `klausur_teile_themen` (Verknüpfung). RLS auf allen drei Tabellen nach dem etablierten Muster — bei `klausur_teile_themen` zweistufig verschachtelt (Teil → Teil-Tabelle-Join → Klausur → `user_id`). Migration erfolgreich auf das verlinkte Live-Supabase-Projekt angewendet und verifiziert (alle drei Tabellen vorhanden, `relrowsecurity = true`)
+- `src/app/probeklausuren/actions.ts`: `createKlausur`, `updateKlausur` (Delete-then-Insert der Teile, analog Themen-Zuordnung in PROJ-3/4), `markiereNachschreibenErledigt`, `deleteKlausur`. Die Teile werden pro Klausur als **ein** Batch-Insert angelegt (nicht einzeln in einer Schleife), die zugehörigen Themenzuordnungen ebenfalls als ein gemeinsamer Batch-Insert über alle Teile hinweg — reduziert die Anzahl der Datenbank-Roundtrips gegenüber einer naiven Schleife
+- `src/app/probeklausuren/page.tsx`: lädt jetzt zusätzlich `klausuren`, `klausur_teile` und `klausur_teile_themen` live aus Supabase
+- `src/components/probeklausuren/probeklausuren-manager.tsx`: die lokalen State-Mutationen aus der Frontend-Phase rufen jetzt die echten Server Actions auf, mit try/catch für Netzwerkfehler (von Anfang an mit eingebaut, analog PROJ-4)
+
+**Getestet:** `npm run build` fehlerfrei, `npm test` 160/160 grün (davon 14 neue Integrationstests, inkl. eines Tests, der explizit den Batch-Insert-Aufruf mit mehreren Teilen ohne Themen prüft). Migration live auf dem verlinkten Supabase-Projekt angewendet und Tabellen/RLS per SQL-Query verifiziert.
+
+**Vollständiger End-to-End-Test live durchgeführt** (echter Login mit dem QA-Test-Account, gegen die echte Datenbank, nicht nur Code-Review): Klausur mit einem Teil (Punkte vollständig) anlegen → Status „Korrigiert" und „Bestanden"-Badge korrekt → **Seite neu geladen → Klausur, Note und Stufe-1-Text bleiben erhalten** (echte Persistenz bestätigt, nicht nur lokaler State) → Bearbeiten und einen zweiten Teil ohne Punkte hinzufügen → Status springt korrekt zurück auf „Korrektur ausstehend" → erneutes Reload bestätigt, dass auch die Bearbeitung persistiert wurde → Testdaten vollständig entfernt und Entfernung ebenfalls nach Reload verifiziert. 10/10 Prüfungen bestanden, keine Konsolenfehler.
+
+**Noch nicht getestet:** „Nachschreiben erledigt"-Button und die Fälligkeits-Anzeige nach 75 Tagen (Testklausur war zu jung, um den Hinweis live auszulösen — die zugrunde liegende Berechnungsfunktion ist aber bereits durch 7 dedizierte Unit-Tests inkl. Grenzfall bei genau 75 Tagen abgedeckt, siehe Frontend Implementation Notes).
 
 ## QA Test Results
 _To be added by /qa_

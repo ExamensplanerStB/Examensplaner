@@ -22,7 +22,12 @@ import {
 } from "@/components/ui/select";
 import type { Klausurtag, Thema } from "@/lib/klausurtage";
 import { addThema } from "@/app/themen/actions";
-import { heuteISO } from "@/lib/klausuren-berechnung";
+import {
+  createKlausur,
+  deleteKlausur,
+  markiereNachschreibenErledigt,
+  updateKlausur,
+} from "@/app/probeklausuren/actions";
 import {
   CONNECTION_ERROR,
   STATUS_LABEL,
@@ -45,12 +50,6 @@ interface ProbeklausurenManagerProps {
 }
 
 type StatusFilter = "alle" | KlausurStatus;
-
-function neueId(prefix: string): string {
-  return typeof crypto !== "undefined" && "randomUUID" in crypto
-    ? crypto.randomUUID()
-    : `${prefix}${Date.now()}-${Math.random().toString(36).slice(2)}`;
-}
 
 export function ProbeklausurenManager({
   klausurtage,
@@ -112,62 +111,38 @@ export function ProbeklausurenManager({
     setFormOpen(true);
   }
 
-  function werteZuTeile(klausurId: string, values: KlausurFormValues): KlausurTeil[] {
-    return values.teile.map((t) => ({
-      id: neueId("teil"),
-      klausurId,
-      fachId: t.fachId,
-      themenIds: t.themenIds,
-      maxPunkte: t.maxPunkte === "" ? null : Number(t.maxPunkte),
-      erreichtePunkte: t.erreichtePunkte === "" ? null : Number(t.erreichtePunkte),
-    }));
-  }
-
   async function handleFormSubmit(values: KlausurFormValues): Promise<string | null> {
-    if (editingKlausur) {
-      setKlausuren((prev) =>
-        prev.map((k) =>
-          k.id === editingKlausur.id
-            ? {
-                ...k,
-                bezeichnung: values.bezeichnung,
-                datum: values.datum,
-                quelle: values.quelle,
-                note: values.note,
-                stufe1Text: values.stufe1Text,
-                stufe2Text: values.stufe2Text,
-              }
-            : k
-        )
-      );
-      setTeile((prev) => [
-        ...prev.filter((t) => t.klausurId !== editingKlausur.id),
-        ...werteZuTeile(editingKlausur.id, values),
-      ]);
-      return null;
-    }
+    try {
+      if (editingKlausur) {
+        const result = await updateKlausur(editingKlausur.id, values);
+        if ("error" in result) return result.error;
+        setKlausuren((prev) => prev.map((k) => (k.id === editingKlausur.id ? result.klausur : k)));
+        setTeile((prev) => [
+          ...prev.filter((t) => t.klausurId !== editingKlausur.id),
+          ...result.teile,
+        ]);
+        return null;
+      }
 
-    const neueKlausur: Klausur = {
-      id: neueId("klausur"),
-      bezeichnung: values.bezeichnung,
-      datum: values.datum,
-      quelle: values.quelle,
-      note: values.note,
-      stufe1Text: values.stufe1Text,
-      stufe2Text: values.stufe2Text,
-      nachschreibenErledigt: false,
-      createdAt: heuteISO(),
-    };
-    setKlausuren((prev) => [neueKlausur, ...prev]);
-    setTeile((prev) => [...prev, ...werteZuTeile(neueKlausur.id, values)]);
-    return null;
+      const result = await createKlausur(values);
+      if ("error" in result) return result.error;
+      setKlausuren((prev) => [result.klausur, ...prev]);
+      setTeile((prev) => [...prev, ...result.teile]);
+      return null;
+    } catch {
+      return CONNECTION_ERROR;
+    }
   }
 
   async function handleNachschreibenErledigt(klausurId: string): Promise<string | null> {
-    setKlausuren((prev) =>
-      prev.map((k) => (k.id === klausurId ? { ...k, nachschreibenErledigt: true } : k))
-    );
-    return null;
+    try {
+      const result = await markiereNachschreibenErledigt(klausurId);
+      if ("error" in result) return result.error;
+      setKlausuren((prev) => prev.map((k) => (k.id === klausurId ? result.klausur : k)));
+      return null;
+    } catch {
+      return CONNECTION_ERROR;
+    }
   }
 
   function requestDelete(klausur: Klausur) {
@@ -178,10 +153,20 @@ export function ProbeklausurenManager({
   async function confirmDelete() {
     if (!pendingDelete) return;
     setIsDeleting(true);
-    setKlausuren((prev) => prev.filter((k) => k.id !== pendingDelete.id));
-    setTeile((prev) => prev.filter((t) => t.klausurId !== pendingDelete.id));
-    setIsDeleting(false);
-    setPendingDelete(null);
+    try {
+      const result = await deleteKlausur(pendingDelete.id);
+      if ("error" in result) {
+        setDeleteError(result.error);
+        return;
+      }
+      setKlausuren((prev) => prev.filter((k) => k.id !== pendingDelete.id));
+      setTeile((prev) => prev.filter((t) => t.klausurId !== pendingDelete.id));
+      setPendingDelete(null);
+    } catch {
+      setDeleteError(CONNECTION_ERROR);
+    } finally {
+      setIsDeleting(false);
+    }
   }
 
   const gefiltert = klausuren

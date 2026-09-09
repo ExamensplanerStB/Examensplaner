@@ -1,8 +1,8 @@
 # PROJ-6: Todo-Liste
 
-## Status: Planned
+## Status: In Progress
 **Created:** 2026-09-09
-**Last Updated:** 2026-09-09
+**Last Updated:** 2026-09-10
 
 ## Dependencies
 - PROJ-1 (Supabase-Infrastruktur-Setup) — für Auth-Schutz der Route und das RLS-Muster
@@ -237,6 +237,26 @@ und über Geräte hinweg synchron.
 ### Dependencies
 - Keine neuen npm-Pakete nötig — react-hook-form, Zod und alle benötigten shadcn/ui-Komponenten (Select, Input, Dialog, AlertDialog, Switch, Checkbox, Badge) sind bereits aus PROJ-1–5 im Projekt installiert
 - Supabase CLI (bereits im Einsatz) für die neue Migration
+
+## Frontend Implementation Notes (Frontend Developer)
+
+**Umgesetzt (2026-09-10):**
+- `src/lib/aufgaben.ts`: Typen (`Aufgabe`, `EigeneKategorie`, `KategorieFest`, `Prioritaet`, `Zeittyp`), feste Werteliste für Kategorien/Priorität inkl. Design-System-Farben (`KATEGORIE_FEST_FARBE`, `PRIORITAET_FARBE`/`_TINT`), feste Farbpalette für eigene Kategorien (`KATEGORIE_PALETTE`), reine Funktionen `istUeberfaellig()`, `datumsGruppenLabel()`, `zeitAnzeige()`, `kategorieVon()` und `gruppiereAufgaben()` (Gruppierung nach Datum + Sortierung Zeit/Priorität/Kategorie innerhalb der Gruppe). Nutzt `diffTage`/`heuteISO` aus `karteikarten-intervall.ts` wieder, statt sie zu duplizieren (siehe Tech Design)
+- `src/lib/aufgaben.test.ts`: 17 Unit-Tests für Überfällig-Erkennung (inkl. Grenzfälle heute/erledigt/kein Datum), Datumsgruppen-Label, Zeit-Anzeige, Kategorie-Auflösung und alle drei Sortiermodi
+- `src/lib/schemas/aufgabe.ts`: `aufgabeSchema` (Titel Pflicht/max. 200 Zeichen, Endzeit-nach-Startzeit-Check nur bei Zeittyp „zeitslot"). Die gegenseitige Ausschließlichkeit von `kategorieFest`/`eigeneKategorieId` wird bereits auf Formularebene aufgelöst: ein einziges `kategorie`-Feld mit den Werten `"keine"`/`fest:<KategorieFest>`/`eigene:<id>`, das der Manager beim Speichern in die beiden Aufgabe-Felder zerlegt — dadurch kann der ursprünglich im Tech Design vorgesehene Zod-Refine für die Ausschließlichkeit entfallen, ein struktureller Fehler ist gar nicht erst darstellbar
+- `src/components/aufgaben/aufgabe-zeile.tsx`, `aufgabe-form.tsx`, `aufgaben-manager.tsx`: Listenansicht gruppiert nach Datum (Card mit Trennlinien statt einzelner Cards pro Aufgabe, wie im Tech Design festgelegt), Status-/Sortier-Segmented-Controls, Formular mit Priorität als Button-Gruppe, Kategorie-Select (feste + eigene, gruppiert) mit Inline-Neuanlage (Name + Farbauswahl aus fester Palette, Dedupe case-insensitive), Zeittyp/Zeitslot nur sichtbar sobald ein Datum gesetzt ist, „Im Kalender anzeigen"-Switch
+- `src/app/todos/page.tsx`: Server Component, bewusst nicht `async` — es gibt noch keine Tabelle, aus der geladen werden könnte; startet mit leeren Platzhalter-Arrays (`initialAufgaben`/`initialEigeneKategorien`), analog zu `initialKlausuren`/`initialTeile` in PROJ-5. `/todos` ist automatisch durch die bestehende `proxy.ts`-Auth-Weiche aus PROJ-1 geschützt (Blocklist-Ansatz: alles außer `/login` erfordert eine Session) — keine Änderung an der Middleware nötig
+
+**Bewusst noch nicht umgesetzt (folgt in `/backend`):**
+- Komplett lokaler React-Zustand, keine echte Persistenz — Aufgaben und eigene Kategorien gehen bei Neuladen der Seite verloren; `aufgaben`/`aufgaben_kategorien` existieren noch nicht als Tabellen
+- „Verbindung fehlgeschlagen"-Meldung (AC „Bearbeiten & Löschen") kann erst mit echten Server Actions getestet werden (analog PROJ-1–5)
+- DB-Check-Constraint `end_zeit > start_zeit` existiert erst mit der Migration
+
+**Getestet:** `npm run build` fehlerfrei (Route `/todos` korrekt erzeugt, aktuell noch statisch — wird mit `/backend` dynamisch, sobald aus Supabase geladen wird), TypeScript ohne Fehler, `npm run lint` sauber (0 Warnungen/Fehler). Per `curl` gegen den laufenden Dev-Server bestätigt: `/todos` ohne Session liefert `307` nach `/login?redirect=%2Ftodos` (Middleware-Schutz aus PROJ-1 greift automatisch, keine Änderung an `proxy.ts` nötig), Login-Seite rendert fehlerfrei (`200`).
+
+**Vollständiger Golden Path live im Browser getestet** (Playwright-Skript gegen den Dev-Server, echter Login mit dem QA-Test-Account, nicht committed — analog zum Vorgehen in PROJ-1): Login → `/todos` → leerer Zustand „Keine Aufgaben" sichtbar → Aufgabe nur mit Titel angelegt → erscheint sofort unter „Ohne Datum" → zweite Aufgabe mit Datum + Zeittyp „Zeitslot" (09:00–10:00) angelegt → erscheint korrekt unter eigener Datumsgruppe „15.09.2026" mit Zeitanzeige → Checkbox-Klick markiert als erledigt (durchgestrichen) und die Aufgabe verschwindet sofort aus dem Filter „Offen" → separat mit einem gezielten Zählskript verifiziert: unter „Offen" 0 Treffer für die erledigte / 1 für die offene Aufgabe, unter „Erledigt" genau umgekehrt, unter „Alle" beide sichtbar — Filterlogik arbeitet korrekt in allen drei Zuständen → Löschen öffnet Bestätigungsdialog („Aufgabe löschen?", Abbrechen/Löschen) → nach Bestätigen ist der Eintrag entfernt, Zähler aktualisiert sich sofort. Keine Konsolenfehler durch PROJ-6-Code (einzige aufgezeichnete Warnung ist ein vorbestehender Hydration-Mismatch auf der Login-Seite durch Browser-Autofill-Styling, unabhängig von diesem Feature).
+
+**Bekannte Umgebungslücke (nicht durch dieses Feature verursacht):** `npm test` (Vitest) schlägt in dieser Session durchgängig mit `[vitest-pool-runner]: Timeout waiting for worker to respond` fehl — sowohl mit dem `forks`- als auch dem `threads`-Pool, und reproduzierbar auch bei einer bereits bestehenden, zuvor grünen Testdatei (`karteikarten-intervall.test.ts`), die durch PROJ-6 nicht verändert wurde. Ein einfacher `worker_threads`-Sanity-Check außerhalb von Vitest funktioniert im selben Verzeichnis einwandfrei — die Ursache liegt also in Vitest selbst (vermutlich workerseitiges Modul-Laden über den iCloud-synchronisierten Projektpfad), nicht im Testcode. Die 17 neuen Unit-Tests in `aufgaben.test.ts` sind dadurch aktuell nicht automatisiert verifizierbar, wurden aber manuell gegen die Implementierung durchgerechnet. Analog zur bereits in PROJ-1 dokumentierten `npm run lint`-Tooling-Lücke — zu prüfen, sobald die Umgebung das wieder zulässt.
 
 ## QA Test Results
 _To be added by /qa_

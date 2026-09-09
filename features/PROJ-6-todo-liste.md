@@ -103,13 +103,140 @@
 | Keine Verknüpfung mit dem Themenkatalog (Fach/Thema) | Todos fließen nicht in die Kompetenzanalyse (PROJ-8) ein; Abhängigkeit in INDEX.md listet nur PROJ-1 | 2026-09-09 |
 
 ### Technical Decisions
-<!-- Wird von /architecture ergänzt -->
+| Decision | Rationale | Date |
+|----------|-----------|------|
+| Feste Kategorien + Priorität als Wertelisten im Code statt DB-Tabelle | Keine Laufzeit-Änderung nötig; Bezeichnung/Farbe bleiben zentral im Design-System, analog zu Bewertungstypen in PROJ-3/4 | 2026-09-09 |
+| Eigene Kategorien in separater flacher Tabelle `aufgaben_kategorien`, statt gemeinsam mit den festen Kategorien | Vermeidet Seed-Migration für nur vier feste Zeilen; klare Trennung über zwei sich ausschließende Felder auf `aufgaben` | 2026-09-09 |
+| Route `/todos`, Tabelle `aufgaben` | Route folgt dem Feature-Namen aus Prototyp/INDEX.md, Tabelle folgt der sonst durchgängig deutschen DB-Namenskonvention — gleiche Diskrepanz existiert bereits bei PROJ-5 (`/probeklausuren` → `klausuren`) | 2026-09-09 |
+| Eigene Kategorie-Farbe aus fester Palette statt freiem Farbwähler | Verhindert unleserliche/kollidierende Farben, einfacher umzusetzen, entspricht dem Prototyp | 2026-09-09 |
+| DB-Check-Constraint `end_zeit > start_zeit` | Verteidigung in der Tiefe zusätzlich zur Zod-Validierung, analog zum Punkte-Check in PROJ-5 | 2026-09-09 |
+| Gegenseitiger Ausschluss `kategorie_fest`/`eigene_kategorie_id` nur auf Anwendungsebene | Für Single-User-App ausreichend robust, analog anderer app-seitig durchgesetzter Regeln in PROJ-1–5 | 2026-09-09 |
+| Überfällig-Status und Datumsgruppen-Label live berechnet, nie gespeichert; Wiederverwendung von `diffTage`/`heuteISO` aus `karteikarten-intervall.ts` | Beide hängen vom aktuellen Datum ab und würden als gespeicherter Wert veralten; identisches Prinzip wie Nachschreiben-Fälligkeit in PROJ-5 | 2026-09-09 |
+| Server Actions statt eigener API-Routen | Konsistent mit dem bereits etablierten Muster in PROJ-1–5 | 2026-09-09 |
 
 ---
 <!-- Sections below are added by subsequent skills -->
 
 ## Tech Design (Solution Architect)
-_To be added by /architecture_
+
+### Component Structure
+```
+/todos (geschützte Route — Zugriff nur eingeloggt, sonst Redirect zu /login,
+        gesichert durch die bestehende Middleware aus PROJ-1)
+└── Todo-Liste-Seite
+    ├── Kopfzeile: Seitentitel + Kurzbeschreibung + "+ Aufgabe"-Button
+    │
+    ├── Filter-/Sortierleiste
+    │   ├── Status-Filter (Offen / Erledigt / Alle)
+    │   ├── Sortierung (Zeit / Priorität / Kategorie)
+    │   └── Zähler ("X offen · Y gesamt")
+    │
+    ├── Aufgaben-Liste, gruppiert nach Datum (Heute/Morgen/Gestern/Datum,
+    │   "Ohne Datum" zuletzt)
+    │   └── Je Gruppe: Gruppenlabel + Card
+    │       └── Je Aufgabe (Zeile)
+    │           ├── Checkbox (Erledigt umschalten)
+    │           ├── Titel (klickbar zum Bearbeiten) + Kategorie-Punkt mit Label
+    │           ├── Zeit-Anzeige ("Ganztägig" oder "Start–Endzeit Uhr"),
+    │           │   Datum rot hervorgehoben, wenn überfällig (offen + Datum
+    │           │   in der Vergangenheit)
+    │           ├── Prioritäts-Badge (nur wenn Priorität ≠ "Keine")
+    │           └── Löschen-Icon
+    │
+    ├── Leerer Zustand ("Keine Aufgaben") — abhängig vom aktiven Filter
+    │
+    ├── Neue/Bearbeiten-Aufgabe-Formular (Modal)
+    │   ├── Titel (Textfeld, Pflicht, max. 200 Zeichen)
+    │   ├── Datum (optionales Datumsfeld)
+    │   ├── Kategorie (Auswahl: 4 feste Kategorien + eigene Kategorien +
+    │   │   "Eigene Kategorie anlegen" → Inline-Formular mit Namensfeld und
+    │   │   Farbauswahl aus fester Palette)
+    │   ├── Priorität (Button-Gruppe: Hoch/Mittel/Niedrig/Keine)
+    │   ├── "Im Kalender anzeigen"-Schalter (Standard: an)
+    │   ├── Zeittyp (Ganztägig/Zeitslot) — erst wähl-/sichtbar, sobald ein
+    │   │   Datum gesetzt ist
+    │   └── Start-/Endzeit (nur bei Zeittyp "Zeitslot")
+    │
+    ├── Lösch-Bestätigungsdialog (Abbrechen / Löschen)
+    │
+    └── Lade-/Fehlerzustände (Skeleton beim initialen Laden, "Verbindung
+        fehlgeschlagen"-Hinweis bei Netzwerkfehlern)
+```
+
+### Data Model (in plain language)
+```
+Feste Kategorien und Priorität sind Wertelisten im Anwendungscode (keine
+eigene Tabelle) — analog zu Bewertungstypen wie "Fachlich"/"Klausurtechnik"
+in PROJ-3/4. Das hält Bezeichnung und Farbe an einer Stelle im Design-System
+gepflegt, statt sie zusätzlich in der Datenbank zu duplizieren:
+- Kategorie (fest): Vorlesung/Seminar, Lernsession, Wiederholung,
+  Frist/Prüfung — Farben identisch zu den Kalender-Kategorien-Tokens im
+  Design-System
+- Priorität: Hoch, Mittel, Niedrig, Keine (Standard) — Farben identisch zum
+  bestehenden Ampelsystem
+
+Tabelle "aufgaben" (eine Zeile pro Todo-Eintrag):
+- id
+- user_id            → verweist auf den eingeloggten Nutzer (RLS-Muster aus
+                        PROJ-1)
+- titel              → Pflichtfeld, max. 200 Zeichen
+- datum              → optional
+- zeittyp            → "ganztag" oder "zeitslot", nur gesetzt, wenn ein
+                        Datum vorhanden ist; sonst leer
+- start_zeit / end_zeit → nur gesetzt, wenn zeittyp "zeitslot" ist; end_zeit
+                        muss nach start_zeit liegen
+- kategorie_fest     → einer von Vorlesung/Seminar, Lernsession,
+                        Wiederholung, Frist/Prüfung, oder leer
+- eigene_kategorie_id → verweist optional auf "aufgaben_kategorien" (siehe
+                        unten); höchstens eines von kategorie_fest/
+                        eigene_kategorie_id ist gleichzeitig gesetzt, nie
+                        beide
+- prioritaet         → Hoch/Mittel/Niedrig/Keine, Standard "Keine"
+- erledigt           → true/false, Standard false
+- im_kalender        → true/false, Standard true (Datenfeld für PROJ-9,
+                        siehe Out of Scope in der Spezifikation)
+- created_at
+
+Tabelle "aufgaben_kategorien" (eigene, vom Nutzer angelegte Kategorien):
+- id
+- user_id            → RLS-Muster aus PROJ-1
+- name               → max. 60 Zeichen, Dedupe case-insensitive pro Nutzer
+                        (identisches Prinzip wie die Themen-Dedupe in PROJ-2)
+- farbe              → eine von mehreren Farben aus einer festen Palette
+                        (kein freier Farbwähler), analog zur Farbauswahl im
+                        HTML-Prototyp
+- created_at
+
+Folgende Werte sind nicht gespeichert, sondern werden bei jedem Laden live
+berechnet (identisches Prinzip wie die zeitabhängigen Badges in PROJ-3/4/5 —
+ein gespeicherter Wert würde sonst veralten):
+- Überfällig-Status = Datum liegt vor heute UND erledigt ist false
+- Datumsgruppen-Label (Heute/Morgen/Gestern/Datum) über die bereits
+  vorhandenen Datumsfunktionen `diffTage`/`heuteISO` (PROJ-3), nicht neu
+  implementiert
+
+Zugriffsregel (Row Level Security) für beide Tabellen: identisches, flaches
+Muster wie in PROJ-1–5 — direkt über user_id, kein verschachtelter
+Eltern-Check nötig (anders als z.B. bei "klausur_teile" in PROJ-5).
+
+Gespeichert in: Supabase (PostgreSQL) — wie alle bisherigen Daten, zentral
+und über Geräte hinweg synchron.
+```
+
+### Tech Decisions (Reasoning)
+- **Feste Kategorien und Priorität als Wertelisten im Code, nicht als Datenbank-Tabelle:** Es gibt keinen Bedarf, sie zur Laufzeit zu ändern; Bezeichnung und Farbe bleiben so an einer Stelle im Design-System gepflegt (analog zu den Bewertungstypen in PROJ-3/4), statt eine zusätzliche Tabelle nur für vier feste Zeilen zu pflegen.
+- **Eigene Kategorien als separate, flache Tabelle statt einer gemeinsamen Tabelle mit den festen Kategorien:** Vermeidet eine Migration mit Seed-Daten nur für vier feste Zeilen (wie bei "faecher" in PROJ-2) und hält die Unterscheidung "fest vs. eigen" eindeutig über zwei getrennte, sich gegenseitig ausschließende Felder auf "aufgaben" ab, statt einer Tabelle mit gemischtem Ursprung.
+- **Route `/todos`, Tabellenname `aufgaben`:** Die Route folgt dem im Prototyp und in INDEX.md verwendeten Feature-Namen "Todo-Liste"; der Tabellenname folgt der sonst durchgängig deutschen Benennung in der Datenbank (`karteikarten`, `klausuren`, `themen`, `faecher`). Dieselbe Diskrepanz zwischen Routen- und Tabellenname existiert bereits bei PROJ-5 (`/probeklausuren` → Tabelle `klausuren`).
+- **Eigene Kategorie-Farbe aus fester Palette statt freiem Farbwähler:** Verhindert unleserliche oder mit dem Design-System kollidierende Farben, deutlich einfacher umzusetzen — identisches Prinzip zur Farbauswahl im HTML-Prototyp.
+- **DB-seitiger Check-Constraint für `end_zeit > start_zeit`:** Verteidigung in der Tiefe zusätzlich zur Zod-Validierung — identisches Prinzip wie der Punkte-Check (`erreichte ≤ max`) in PROJ-5.
+- **Gegenseitiger Ausschluss von `kategorie_fest`/`eigene_kategorie_id` auf Anwendungsebene (Zod + UI) durchgesetzt, nicht als Datenbank-Constraint:** einfacher umzusetzen, für eine Single-User-App ausreichend robust — analog dazu, wie auch andere Geschäftsregeln in PROJ-1–5 nicht als DB-Constraints, sondern in der Anwendungslogik durchgesetzt werden.
+- **Überfällig-Status und Datumsgruppen-Label werden bei jedem Laden live berechnet, nie gespeichert:** identisches Prinzip wie die Nachschreiben-Fälligkeit/Status-Badges in PROJ-3/4/5, da beide vom aktuellen Datum abhängen und als gespeicherter Wert sofort veralten würden. Nutzt dafür die bereits vorhandenen Funktionen `diffTage`/`heuteISO` aus `karteikarten-intervall.ts` statt sie zu duplizieren (siehe bereits in PROJ-5 angewandtes Muster).
+- **Keine Verknüpfung zu "faecher"/"themen" (PROJ-2):** deckt sich mit der in der Spezifikation begründeten Out-of-Scope-Entscheidung — Todos sind nicht Teil der Kompetenzanalyse.
+- **Server Actions statt eigener API-Routen, RLS-Muster 1:1 aus PROJ-1–5:** konsistent mit dem bereits abgenommenen Muster im gesamten Projekt.
+
+### Dependencies
+- Keine neuen npm-Pakete nötig — react-hook-form, Zod und alle benötigten shadcn/ui-Komponenten (Select, Input, Dialog, AlertDialog, Switch, Checkbox, Badge) sind bereits aus PROJ-1–5 im Projekt installiert
+- Supabase CLI (bereits im Einsatz) für die neue Migration
 
 ## QA Test Results
 _To be added by /qa_

@@ -1,6 +1,6 @@
 # PROJ-6: Todo-Liste
 
-## Status: Approved
+## Status: Deployed
 **Created:** 2026-09-09
 **Last Updated:** 2026-09-10
 
@@ -515,8 +515,8 @@ Nach dem Fix in `aufgabe-form.tsx` (siehe BUG-1 und Frontend Implementation Note
 ## Deployment
 
 **Produktions-URL:** https://examensplaner-v2fg.vercel.app/todos
-**Deployed:** 2026-09-10
-**Git-Tag:** `v1.3.0-PROJ-6`
+**Deployed:** 2026-09-10 (Erstdeployment), Redeploy 2026-09-10 (Refine, siehe unten)
+**Git-Tags:** `v1.3.0-PROJ-6` (Erstdeployment), `v1.4.0-PROJ-6` (Refine-Redeploy)
 
 **Pre-Deployment-Checks:** `npm run build` fehlerfrei, Migration `20260910090000_create_aufgaben.sql` bereits während `/backend` live auf das Supabase-Projekt angewendet, keine neuen Env-Variablen nötig (nutzt dieselbe Supabase-Verbindung wie PROJ-1–5, kein `process.env`-Zugriff in eigenem PROJ-6-Code), keine Secrets in den committeten Diffs (geprüft). `npm run lint` weiterhin durch die bereits in PROJ-1 dokumentierte Tooling-Lücke blockiert (`TypeError: Converting circular structure to JSON` in der ESLint-Konfiguration selbst) — unverändert vorbestehend, kein PROJ-6-Bezug.
 
@@ -534,3 +534,20 @@ Nach dem Fix in `aufgabe-form.tsx` (siehe BUG-1 und Frontend Implementation Note
 **Production-Ready Essentials:** Bereits projektweit aus PROJ-1 vorhanden (Security-Headers, Vercel-eigenes Monitoring) — keine PROJ-6-spezifischen Ergänzungen nötig.
 
 **Bekannte, vorbestehende Einschränkungen (nicht PROJ-6-spezifisch, unverändert seit früheren Deployments):** `npm test` durch die Vitest-Worker-Pool-Umgebungslücke in dieser Sandbox blockiert; `npm run lint` durch einen ESLint-Konfigurationsfehler blockiert. Beide betreffen das gesamte Projekt, nicht nur PROJ-6, und wurden durch umfangreiche Live-Tests gegen echte Dev- und Produktionsumgebungen kompensiert (siehe QA Test Results und Post-Deployment-Verifikation oben).
+
+### Redeploy 2026-09-10: Refine — Feste Kategorien entfernt, Kategorie-Löschen
+
+**Git-Tag:** `v1.4.0-PROJ-6`
+
+**Pre-Deployment-Checks:** `npm run build` fehlerfrei; Migration `20260910160000_aufgaben_kategorien_refine.sql` bereits während `/backend` live auf das verlinkte Supabase-Projekt angewendet und per `supabase migration list` erneut bestätigt (lokal == remote für alle 7 Migrationen); keine neuen Env-Variablen, keine neuen Pakete, keine Secrets in den committeten Diffs. `npm run lint` weiterhin durch dieselbe vorbestehende, PROJ-1-dokumentierte Tooling-Lücke blockiert (unverändert).
+
+**Deployment-Ablauf:** Push von 5 Commits auf `main` (Refine-Spec, Tech Design, Frontend, Backend, QA) hat den bestehenden Vercel-Auto-Deploy ausgelöst — kein manueller Eingriff nötig.
+
+**Post-Deployment-Verifikation:** Live gegen die Produktions-URL getestet (dediziertes, danach wieder aufgeräumtes Playwright-Skript, Zugangsdaten nur als Umgebungsvariable, nicht committed) — **5/5 Prüfungen bestanden:**
+- Login + `/todos` lädt korrekt
+- „Feste Kategorien"-Gruppe ist im Kategorie-Dropdown der Produktionsversion nicht mehr vorhanden (bestätigt, dass tatsächlich die neue Version live ist, nicht ein gecachter alter Stand)
+- Neu angelegte Kategorie bleibt nach vollständigem Reload erhalten (echte Persistenz gegen die Produktions-DB)
+- Gelöschte Kategorie bleibt nach vollständigem Reload gelöscht (echte Persistenz des Löschens gegen die Produktions-DB, nicht nur Client-State)
+- Keine Konsolen-/Page-Errors während des gesamten Durchlaufs
+
+Test-Kategorie danach über den echten Lösch-Flow entfernt, 0 Test-Artefakte im Produktionskonto verblieben.

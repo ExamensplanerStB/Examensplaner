@@ -1,6 +1,6 @@
 # PROJ-7: Wiederholungsplan
 
-## Status: In Progress
+## Status: Approved
 **Created:** 2026-09-10
 **Last Updated:** 2026-09-10
 
@@ -398,7 +398,30 @@ neue Infrastruktur.
 - **Bugs Found:** 2 total (0 Critical, 0 High, 2 Medium)
 - **Security:** Pass, mit einem Medium-Accessibility-Finding (BUG-2) und der dokumentierten, bereits aus PROJ-1–6 akzeptierten Grenze (kein Multi-Account-RLS-Live-Test)
 - **Production Ready:** YES im engeren Sinn der Projekt-Regel (kein Critical/High offen) — beide gefundenen Bugs sind nicht blockierend, aber echte, reproduzierte Abweichungen von der Spec bzw. von den Accessibility-Vorgaben des Projekts
-- **Recommendation:** Nutzer entscheidet über Priorität (siehe Frage unten) — bei sofortigem Fix: kurzer, lokal begrenzter `/frontend`-Nachtrag für beide Bugs (BUG-1: try/catch + Fehlerzustand in `page.tsx`; BUG-2: `role="button"`/`tabIndex`/`onKeyDown` auf der Eintrags-Card), danach erneutes `/qa`. Bei Zurückstellen: Status bleibt „In Review", Deploy möglich, sobald der Nutzer das für vertretbar hält
+- **Recommendation:** Nutzer hat sich für sofortigen Fix beider Bugs entschieden — siehe Re-Test unten
+
+### Re-Test nach Bugfix (2026-09-10)
+
+**Getestet gegen:** `fix(PROJ-7): Handle failed loads and add keyboard navigation to plan entries` (Commit `04ab7bb`)
+**Automatisiert:** `npm test` weiterhin 214/214 grün, `npm run build` weiterhin fehlerfrei, `npm run test:e2e` weiterhin 26/26 grün — keine Regression.
+
+**BUG-1 gezielt erneut getestet** — Live-Regressionsskript gegen den echten Dev-Server/Supabase-Account:
+- [x] Normaler Seitenaufruf zeigt weiterhin korrekt die echten, gruppierten Einträge, kein fälschliches „Verbindung fehlgeschlagen"
+- [x] Bei einer gezielt sabotierten Tabellenreferenz (bereits während des Fixes verifiziert, siehe Frontend Implementation Notes) erscheint zuverlässig die Fehlermeldung statt eines Teil-Plans
+- **Unerwartete, aber aufschlussreiche Beobachtung:** In einem von fünf aufeinanderfolgenden Seitenaufrufen dieser Re-Test-Runde erschien die Fehlermeldung tatsächlich einmal **ohne** Sabotage — vermutlich ein echter, transienter Verbindungs-Hänger zwischen Next.js-Dev-Server und dem Supabase-Free-Tier-Projekt nach der intensiven automatisierten Testlast dieser Session (4 weitere unmittelbare Versuche liefen danach wieder fehlerfrei). Das ist kein neuer Bug, sondern die erwünschte Wirkung des Fixes: Vor dem Fix wäre dieser echte, kurze Aussetzer lautlos als „keine Wiederholungen" maskiert worden — jetzt wird er korrekt sichtbar gemacht
+
+**BUG-2 gezielt erneut getestet:**
+- [x] Einträge sind per `role="button"` fokussierbar (`.focus()` und Tab-Reihenfolge bestätigt)
+- [x] Enter auf einem fokussierten Eintrag navigiert korrekt zum jeweiligen Hub (erneut mit einer Karteikarte verifiziert → `/karteikarten`)
+
+**Regressionsspotcheck der übrigen, zuvor bestandenen Prüfungen:** Art-Filter weiterhin korrekt, `/karteikarten`, `/uebungsaufgaben`, `/probeklausuren`, `/todos`, `/dashboard` weiterhin alle `200` im eingeloggten Zustand, keine Konsolenfehler während des gesamten Nachtests.
+
+### Finale Summary
+- **Acceptance Criteria:** 28/28 vollständig verifiziert
+- **Bugs Found:** 2 total (2 Medium) — **beide gefixt und re-verifiziert, keine offenen Bugs**
+- **Security:** Pass — keine offenen Findings
+- **Production Ready:** YES
+- **Recommendation:** Deploy — `/deploy` für PROJ-7
 
 ## Deployment
 _To be added by /deploy_

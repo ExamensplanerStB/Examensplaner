@@ -1,6 +1,6 @@
 # PROJ-7: Wiederholungsplan
 
-## Status: Approved
+## Status: Deployed
 **Created:** 2026-09-10
 **Last Updated:** 2026-09-10
 
@@ -424,4 +424,19 @@ neue Infrastruktur.
 - **Recommendation:** Deploy — `/deploy` für PROJ-7
 
 ## Deployment
-_To be added by /deploy_
+
+**Produktions-URL:** https://examensplaner-v2fg.vercel.app/wiederholungsplan
+**Deployed:** 2026-09-10
+**Git-Tag:** `v1.5.0-PROJ-7`
+
+**Pre-Deployment-Checks:** `npm run build` fehlerfrei, `npm test` 214/214 grün, `npm run test:e2e` 26/26 grün, keine neue Migration nötig (PROJ-7 hat keine eigene Tabelle — reine Aggregation über bereits produktive PROJ-2/3/4/5-Tabellen), keine neuen Env-Variablen, `git diff origin/main..HEAD --stat` vor dem Push geprüft (nur die neun erwarteten PROJ-7-Dateien, keine Secrets). `npm run lint` weiterhin ohne Ergebnis (bekannte, seit PROJ-1 dokumentierte Tooling-Lücke, nicht PROJ-7-spezifisch).
+
+**Deployment-Ablauf:** Kein Erstdeployment — Vercel-Projekt und Auto-Deploy-on-Push bestehen bereits seit PROJ-1. `git push origin main` (6 Commits) hat den Auto-Deploy zuverlässig ausgelöst; die neue Route war beim ersten Live-Check bereits vollständig gebaut und aktiv.
+
+**Post-Deployment-Verifikation:**
+- `/wiederholungsplan`, `/karteikarten`, `/uebungsaufgaben`, `/probeklausuren`, `/todos`, `/dashboard` liefern alle korrekt `307` → `/login` für nicht eingeloggte Zugriffe
+- Security-Headers (`X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Strict-Transport-Security`) auf der neuen Route bestätigt gesetzt — identisch zu den bestehenden Hubs, keine PROJ-7-spezifische Änderung an `next.config.ts` nötig
+- Authentifizierter Live-Check gegen die echte Produktions-URL (mit dem QA-Test-Account): `/wiederholungsplan` liefert `200` und rendert die erwartete Seite (Titel, Beschreibung) mit echten Daten — rein lesend verifiziert, **bewusst keine Testdaten in Produktion angelegt/gelöscht**, da der Account inzwischen auch reale Nutzerdaten enthalten könnte (Prüfungsvorbereitung läuft laut PRD ab September 2026)
+- Golden Path (Filter, Navigation zu den Hubs, „Nachschreiben erledigt") bereits während `/qa` live gegen dasselbe Supabase-Projekt verifiziert — keine erneute mutierende Verifikation in Produktion nötig, da Code identisch zum QA-geprüften Stand ist
+
+**Production-Ready Essentials:** Bereits projektweit aus PROJ-1 vorhanden (Security-Headers, Vercel-eigenes Monitoring) — keine PROJ-7-spezifischen Ergänzungen nötig, keine neuen externen Services oder Secrets eingeführt.

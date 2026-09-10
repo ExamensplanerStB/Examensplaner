@@ -91,6 +91,20 @@ export function AufgabenManager({ initialAufgaben, initialEigeneKategorien }: Au
     }
   }
 
+  // TODO(/backend): durch echte Server Action deleteEigeneKategorie(id) ersetzen —
+  // aktuell nur lokaler State (frontend-only Phase des Refine-Zyklus, siehe Tech Design).
+  async function handleEigeneKategorieDelete(id: string): Promise<string | null> {
+    try {
+      setEigeneKategorien((prev) => prev.filter((k) => k.id !== id));
+      setAufgaben((prev) =>
+        prev.map((a) => (a.eigeneKategorieId === id ? { ...a, eigeneKategorieId: null } : a))
+      );
+      return null;
+    } catch {
+      return CONNECTION_ERROR;
+    }
+  }
+
   async function handleFormSubmit(values: AufgabeFormValues): Promise<string | null> {
     try {
       if (editingAufgabe) {
@@ -230,6 +244,7 @@ export function AufgabenManager({ initialAufgaben, initialEigeneKategorien }: Au
         editingAufgabe={editingAufgabe}
         onSubmit={handleFormSubmit}
         onEigeneKategorieCreate={handleEigeneKategorieCreate}
+        onEigeneKategorieDelete={handleEigeneKategorieDelete}
       />
 
       <AlertDialog

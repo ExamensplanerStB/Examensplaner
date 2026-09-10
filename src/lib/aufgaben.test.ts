@@ -18,7 +18,6 @@ function aufgabe(overrides: Partial<Aufgabe> = {}): Aufgabe {
     zeittyp: null,
     startZeit: null,
     endZeit: null,
-    kategorieFest: null,
     eigeneKategorieId: null,
     prioritaet: "keine",
     erledigt: false,
@@ -89,26 +88,19 @@ describe("zeitAnzeige", () => {
 describe("kategorieVon", () => {
   const eigeneKategorien: EigeneKategorie[] = [{ id: "k1", name: "Repetitorium", farbe: "#2A6FDB" }];
 
-  it("feste Kategorie -> Label + Design-System-Farbe", () => {
-    expect(kategorieVon({ kategorieFest: "wiederholung", eigeneKategorieId: null }, eigeneKategorien)).toEqual({
-      label: "Wiederholung",
-      farbe: "var(--cal-wiederholung)",
-    });
-  });
-
   it("eigene Kategorie -> Name + gewählte Farbe", () => {
-    expect(kategorieVon({ kategorieFest: null, eigeneKategorieId: "k1" }, eigeneKategorien)).toEqual({
+    expect(kategorieVon({ eigeneKategorieId: "k1" }, eigeneKategorien)).toEqual({
       label: "Repetitorium",
       farbe: "#2A6FDB",
     });
   });
 
   it("keine Kategorie -> null", () => {
-    expect(kategorieVon({ kategorieFest: null, eigeneKategorieId: null }, eigeneKategorien)).toBeNull();
+    expect(kategorieVon({ eigeneKategorieId: null }, eigeneKategorien)).toBeNull();
   });
 
   it("eigene Kategorie wurde gelöscht/existiert nicht mehr -> null", () => {
-    expect(kategorieVon({ kategorieFest: null, eigeneKategorieId: "unbekannt" }, eigeneKategorien)).toBeNull();
+    expect(kategorieVon({ eigeneKategorieId: "unbekannt" }, eigeneKategorien)).toBeNull();
   });
 });
 
@@ -152,13 +144,17 @@ describe("gruppiereAufgaben", () => {
   });
 
   it("Sortierung 'kategorie': alphabetisch, Aufgaben ohne Kategorie zuletzt", () => {
-    const aufgaben = [
-      aufgabe({ id: "a1", titel: "X", datum: "2026-09-09", kategorieFest: "wiederholung" }),
-      aufgabe({ id: "a2", titel: "Y", datum: "2026-09-09", kategorieFest: null }),
-      aufgabe({ id: "a3", titel: "Z", datum: "2026-09-09", kategorieFest: "frist" }),
+    const eigeneKategorien: EigeneKategorie[] = [
+      { id: "k1", name: "Wiederholung", farbe: "#2A6FDB" },
+      { id: "k2", name: "Frist", farbe: "#B5384E" },
     ];
-    const gruppen = gruppiereAufgaben(aufgaben, "kategorie", [], heute);
-    // "Frist / Prüfung" < "Wiederholung" alphabetisch, ohne Kategorie zuletzt
+    const aufgaben = [
+      aufgabe({ id: "a1", titel: "X", datum: "2026-09-09", eigeneKategorieId: "k1" }),
+      aufgabe({ id: "a2", titel: "Y", datum: "2026-09-09", eigeneKategorieId: null }),
+      aufgabe({ id: "a3", titel: "Z", datum: "2026-09-09", eigeneKategorieId: "k2" }),
+    ];
+    const gruppen = gruppiereAufgaben(aufgaben, "kategorie", eigeneKategorien, heute);
+    // "Frist" < "Wiederholung" alphabetisch, ohne Kategorie zuletzt
     expect(gruppen[0].aufgaben.map((a) => a.id)).toEqual(["a3", "a1", "a2"]);
   });
 });

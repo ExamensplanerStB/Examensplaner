@@ -1,6 +1,6 @@
 # PROJ-6: Todo-Liste
 
-## Status: Architected
+## Status: In Progress
 **Created:** 2026-09-09
 **Last Updated:** 2026-09-10
 
@@ -293,6 +293,21 @@ und über Geräte hinweg synchron.
 **Fix:** `handleKategorieAnlegen()` öffnet das Kategorie-Select jetzt kurz kontrolliert (`kategorieSelectOpen`-State), wartet einen Animationsframe (`requestAnimationFrame`) — genug Zeit, damit Radix das neue `<SelectItem>` mountet und registriert — setzt danach den Wert per `form.setValue()` und schließt das Select wieder. Kein `forceMount` in der installierten Radix-Version (2.2.6) verfügbar, daher dieser Weg statt einer dauerhaften Registrierung aller Items.
 
 **Nachgetestet:** Vollständiges Playwright-Regressionsskript erneut ausgeführt (dasselbe wie in der QA-Runde, gegen das echte Supabase-Projekt) — **31/31 Prüfungen bestanden**, inkl. dediziertem Re-Test von BUG-1 mit drei Verifikationsebenen: (1) Select zeigt die neue Kategorie sofort an, (2) Badge erscheint in der Liste, (3) **nach vollständigem Page-Reload** (echter Serverstand statt Client-State) ist die Kategorie weiterhin korrekt zugeordnet. Zusätzlich verifiziert: das normale Öffnen/Auswählen aus dem Dropdown funktioniert unverändert (keine Regression), `npm run build` fehlerfrei, `npx playwright test` weiterhin 11/11 grün. Kein sichtbares Flackern des Dropdowns beim Anlegen bemerkt (der kurze programmatische Open-Zustand fällt zeitlich mit dem Schließen des „Eigene Kategorie anlegen"-Panels zusammen).
+
+### Refine 2026-09-10: Feste Kategorien entfernt, Kategorie-Löschen (Frontend-Teil)
+
+**Umgesetzt:**
+- `src/lib/aufgaben.ts`: `KategorieFest`-Typ und `KATEGORIE_FEST_OPTIONEN`/`KATEGORIE_FEST_LABEL`/`KATEGORIE_FEST_FARBE` entfernt; `Aufgabe.kategorieFest`-Feld entfernt; `kategorieVon()` vereinfacht auf ausschließlich `eigeneKategorieId`
+- `src/lib/aufgaben.test.ts`: Testfall für feste Kategorie entfernt, „Sortierung 'kategorie'"-Test auf echte `eigeneKategorien`-Einträge umgestellt
+- `src/components/aufgaben/aufgabe-form.tsx`: „Feste Kategorien"-`SelectGroup` aus dem Kategorie-Dropdown entfernt (nur noch „Keine Kategorie" + eigene Kategorien); im „Eigene Kategorie anlegen"-Panel eine Liste aller vorhandenen eigenen Kategorien ergänzt (Farbpunkt + Name + Löschen-Icon), oberhalb des bestehenden Anlege-Unterformulars; neuer, eigener `AlertDialog` zur Löschbestätigung (Warnhinweis: zugeordnete Aufgaben bleiben erhalten, verlieren nur das Badge), analog zum bestehenden Aufgabe-Löschen-Dialog im Manager; neue Prop `onEigeneKategorieDelete`
+- `src/components/aufgaben/aufgaben-manager.tsx`: neuer Handler `handleEigeneKategorieDelete` — entfernt die Kategorie aus dem lokalen State und setzt `eigeneKategorieId` bei betroffenen Aufgaben lokal auf `null` (Aufgaben bleiben erhalten, verlieren nur die Zuordnung); an `AufgabeForm` durchgereicht
+- `src/app/todos/actions.ts`, `src/app/todos/page.tsx`: nur die minimal nötige Anpassung, um den Build wieder grün zu bekommen, nachdem `KategorieFest` aus `aufgaben.ts` entfernt wurde — `kategorieFest`-Feldzuordnung entfernt, `werteZuSpalten()` schreibt `kategorie_fest` jetzt fest auf `null`. **Bewusst nicht angefasst:** DB-Schema/Migration, Spaltenumbenennung `eigene_kategorie_id`→`kategorie_id`, echte `deleteEigeneKategorie`-Server-Action, DELETE-RLS-Policy auf `aufgaben_kategorien` — das ist Aufgabe von `/backend`
+
+**Bewusst noch nicht umgesetzt (folgt in `/backend`):**
+- Kategorie-Löschen ist aktuell rein lokaler State — ein Neuladen der Seite stellt bereits gelöschte Kategorien wieder her, da weder eine echte Server Action noch eine DELETE-RLS-Policy existiert (siehe Tech Design, Decision Log)
+- Migration: `kategorie_fest`-Spalte inkl. Check-Constraint entfernen, `eigene_kategorie_id` zu `kategorie_id` umbenennen
+
+**Getestet:** `npm run build` fehlerfrei (TypeScript, kein Lint-Fehler in den geänderten Dateien). Live im Browser gegen den Dev-Server verifiziert (Playwright-Skript, echter Login mit dem QA-Test-Account, nicht committed): Kategorie-Dropdown zeigt kein „Feste Kategorien"-Label mehr, nur „Keine Kategorie" + eigene Kategorien; neu angelegte Kategorie erscheint mit Löschen-Icon in der Liste im Panel; Klick auf Löschen-Icon öffnet den Bestätigungsdialog mit dem erwarteten Warnhinweistext; nach Bestätigen verschwindet die Kategorie aus der (client-seitigen) Liste. Anschließend beide während der Verifikation angelegten Testkategorien über die echte Datenbank bereinigt (per SQL, analog zur Produktionsbereinigung weiter oben im Decision Log), da das Löschen in dieser Phase noch nicht serverseitig persistiert.
 
 ## Backend Implementation Notes (Backend Developer)
 

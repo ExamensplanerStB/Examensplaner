@@ -2,13 +2,12 @@ import { diffTage, heuteISO } from "./karteikarten-intervall";
 
 export { heuteISO };
 
-export type KategorieFest = "vorlesung" | "lernen" | "wiederholung" | "frist";
 export type Prioritaet = "hoch" | "mittel" | "niedrig" | "keine";
 export type Zeittyp = "ganztag" | "zeitslot";
 export type StatusFilter = "offen" | "erledigt" | "alle";
 export type SortModus = "zeit" | "prioritaet" | "kategorie";
 
-/** Eigene, vom Nutzer angelegte Kategorie (Ergänzung zu den 4 festen Kategorien). */
+/** Eigene, vom Nutzer angelegte Kategorie — der einzige Kategorietyp (siehe Refine 2026-09-10). */
 export interface EigeneKategorie {
   id: string;
   name: string;
@@ -26,8 +25,7 @@ export interface Aufgabe {
   /** Nur gesetzt, wenn zeittyp "zeitslot" ist — sonst null. */
   startZeit: string | null;
   endZeit: string | null;
-  /** Höchstens eines von kategorieFest/eigeneKategorieId ist gesetzt, nie beide. */
-  kategorieFest: KategorieFest | null;
+  /** Wird automatisch null, sobald die referenzierte Kategorie gelöscht wird. */
   eigeneKategorieId: string | null;
   prioritaet: Prioritaet;
   erledigt: boolean;
@@ -35,28 +33,6 @@ export interface Aufgabe {
   imKalender: boolean;
   createdAt: string;
 }
-
-export const KATEGORIE_FEST_OPTIONEN: { value: KategorieFest; label: string }[] = [
-  { value: "vorlesung", label: "Vorlesung / Seminar" },
-  { value: "lernen", label: "Lernsession" },
-  { value: "wiederholung", label: "Wiederholung" },
-  { value: "frist", label: "Frist / Prüfung" },
-];
-
-export const KATEGORIE_FEST_LABEL: Record<KategorieFest, string> = {
-  vorlesung: "Vorlesung / Seminar",
-  lernen: "Lernsession",
-  wiederholung: "Wiederholung",
-  frist: "Frist / Prüfung",
-};
-
-/** Farben identisch zu den Kalender-Kategorien-Tokens im Design-System. */
-export const KATEGORIE_FEST_FARBE: Record<KategorieFest, string> = {
-  vorlesung: "var(--cal-vorlesung)",
-  lernen: "var(--cal-lernen)",
-  wiederholung: "var(--cal-wiederholung)",
-  frist: "var(--cal-frist)",
-};
 
 /** Feste Farbpalette für eigene Kategorien (kein freier Farbwähler, siehe Tech Design). */
 export const KATEGORIE_PALETTE: { name: string; farbe: string }[] = [
@@ -138,12 +114,9 @@ export interface KategorieAnzeige {
 }
 
 export function kategorieVon(
-  aufgabe: Pick<Aufgabe, "kategorieFest" | "eigeneKategorieId">,
+  aufgabe: Pick<Aufgabe, "eigeneKategorieId">,
   eigeneKategorien: EigeneKategorie[]
 ): KategorieAnzeige | null {
-  if (aufgabe.kategorieFest) {
-    return { label: KATEGORIE_FEST_LABEL[aufgabe.kategorieFest], farbe: KATEGORIE_FEST_FARBE[aufgabe.kategorieFest] };
-  }
   if (aufgabe.eigeneKategorieId) {
     const eigene = eigeneKategorien.find((k) => k.id === aufgabe.eigeneKategorieId);
     if (eigene) return { label: eigene.name, farbe: eigene.farbe };

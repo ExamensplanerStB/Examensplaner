@@ -3,8 +3,17 @@
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Loader2, Plus } from "lucide-react";
+import { Loader2, Plus, Trash2 } from "lucide-react";
 
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -28,7 +37,6 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import {
-  KATEGORIE_FEST_OPTIONEN,
   KATEGORIE_PALETTE,
   PRIORITAET_OPTIONEN,
   PRIORITAET_FARBE,
@@ -48,11 +56,11 @@ interface AufgabeFormProps {
     name: string,
     farbe: string
   ) => Promise<{ error: string } | { kategorie: EigeneKategorie }>;
+  onEigeneKategorieDelete: (id: string) => Promise<string | null>;
 }
 
 function kategorieWertVon(aufgabe: Aufgabe | null): string {
   if (!aufgabe) return "keine";
-  if (aufgabe.kategorieFest) return `fest:${aufgabe.kategorieFest}`;
   if (aufgabe.eigeneKategorieId) return `eigene:${aufgabe.eigeneKategorieId}`;
   return "keine";
 }
@@ -90,6 +98,7 @@ export function AufgabeForm({
   editingAufgabe,
   onSubmit,
   onEigeneKategorieCreate,
+  onEigeneKategorieDelete,
 }: AufgabeFormProps) {
   const [isPending, setIsPending] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
@@ -100,6 +109,10 @@ export function AufgabeForm({
   const [kategorieError, setKategorieError] = useState<string | null>(null);
   const [isKategorieAnlegen, setIsKategorieAnlegen] = useState(false);
   const [kategorieSelectOpen, setKategorieSelectOpen] = useState(false);
+
+  const [pendingKategorieDelete, setPendingKategorieDelete] = useState<EigeneKategorie | null>(null);
+  const [kategorieDeleteError, setKategorieDeleteError] = useState<string | null>(null);
+  const [isKategorieDeleting, setIsKategorieDeleting] = useState(false);
 
   const form = useForm<AufgabeFormValues>({
     resolver: zodResolver(aufgabeSchema),
@@ -159,6 +172,28 @@ export function AufgabeForm({
     setNeueKategorieName("");
   }
 
+  function requestKategorieDelete(kategorie: EigeneKategorie) {
+    setKategorieDeleteError(null);
+    setPendingKategorieDelete(kategorie);
+  }
+
+  async function confirmKategorieDelete() {
+    if (!pendingKategorieDelete) return;
+    setIsKategorieDeleting(true);
+    const error = await onEigeneKategorieDelete(pendingKategorieDelete.id);
+    setIsKategorieDeleting(false);
+    if (error) {
+      setKategorieDeleteError(error);
+      return;
+    }
+    // Die gelöschte Kategorie ist im geöffneten Formular ggf. gerade ausgewählt —
+    // dann auf "keine" zurücksetzen, da das zugehörige <SelectItem> wegfällt.
+    if (form.getValues("kategorie") === `eigene:${pendingKategorieDelete.id}`) {
+      form.setValue("kategorie", "keine");
+    }
+    setPendingKategorieDelete(null);
+  }
+
   async function handleSubmit(values: AufgabeFormValues) {
     setIsPending(true);
     setServerError(null);
@@ -172,6 +207,7 @@ export function AufgabeForm({
   }
 
   return (
+    <>
     <Dialog open={open} onOpenChange={(next) => !isPending && onOpenChange(next)}>
       <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto">
         <DialogHeader>
@@ -240,14 +276,6 @@ export function AufgabeForm({
                       </FormControl>
                       <SelectContent>
                         <SelectItem value="keine">Keine Kategorie</SelectItem>
-                        <SelectGroup>
-                          <SelectLabel>Feste Kategorien</SelectLabel>
-                          {KATEGORIE_FEST_OPTIONEN.map((option) => (
-                            <SelectItem key={option.value} value={`fest:${option.value}`}>
-                              {option.label}
-                            </SelectItem>
-                          ))}
-                        </SelectGroup>
                         {eigeneKategorien.length > 0 && (
                           <SelectGroup>
                             <SelectLabel>Eigene Kategorien</SelectLabel>
@@ -279,6 +307,36 @@ export function AufgabeForm({
 
               {kategorieAnlegenOffen && (
                 <div className="mt-2 space-y-3 rounded-lg bg-secondary p-3.5">
+                  {eigeneKategorien.length > 0 && (
+                    <div className="space-y-1 border-b border-border pb-3">
+                      <p className="mb-1 text-[11px] font-bold uppercase tracking-wide text-ink-3">
+                        Vorhandene Kategorien
+                      </p>
+                      {eigeneKategorien.map((kategorie) => (
+                        <div
+                          key={kategorie.id}
+                          className="flex items-center justify-between gap-2 rounded-md bg-background px-2.5 py-1.5"
+                        >
+                          <span className="flex items-center gap-2 text-xs font-medium">
+                            <span
+                              className="h-2 w-2 rounded-full"
+                              style={{ backgroundColor: kategorie.farbe }}
+                            />
+                            {kategorie.name}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => requestKategorieDelete(kategorie)}
+                            disabled={isKategorieAnlegen}
+                            aria-label={`Kategorie „${kategorie.name}“ löschen`}
+                            className="text-ink-3 transition-colors hover:text-destructive disabled:opacity-50"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                   <Input
                     placeholder="z.B. Repetitorium"
                     maxLength={60}
@@ -465,5 +523,38 @@ export function AufgabeForm({
         </Form>
       </DialogContent>
     </Dialog>
+
+    <AlertDialog
+      open={pendingKategorieDelete !== null}
+      onOpenChange={(next) => {
+        if (!next) {
+          setPendingKategorieDelete(null);
+          setKategorieDeleteError(null);
+        }
+      }}
+    >
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Kategorie „{pendingKategorieDelete?.name}“ löschen?</AlertDialogTitle>
+          <AlertDialogDescription>
+            Aufgaben, die dieser Kategorie zugeordnet sind, bleiben erhalten — sie verlieren nur das
+            Kategorie-Badge. Diese Aktion kann nicht rückgängig gemacht werden.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        {kategorieDeleteError && (
+          <p className="text-sm text-destructive" role="alert">
+            {kategorieDeleteError}
+          </p>
+        )}
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={isKategorieDeleting}>Abbrechen</AlertDialogCancel>
+          <Button type="button" variant="destructive" onClick={confirmKategorieDelete} disabled={isKategorieDeleting}>
+            {isKategorieDeleting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+            Löschen
+          </Button>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+    </>
   );
 }

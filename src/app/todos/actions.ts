@@ -7,7 +7,6 @@ import {
   CONNECTION_ERROR,
   type Aufgabe,
   type EigeneKategorie,
-  type KategorieFest,
   type Prioritaet,
   type Zeittyp,
 } from "@/lib/aufgaben";
@@ -30,7 +29,10 @@ type AufgabeRow = {
   zeittyp: Zeittyp | null;
   start_zeit: string | null;
   end_zeit: string | null;
-  kategorie_fest: KategorieFest | null;
+  // Spalte existiert in der DB noch (Entfernung erfolgt in /backend), wird
+  // seit dem Refine 2026-09-10 aber nicht mehr gelesen/geschrieben — feste
+  // Kategorien gibt es im Anwendungscode nicht mehr.
+  kategorie_fest: string | null;
   eigene_kategorie_id: string | null;
   prioritaet: Prioritaet;
   erledigt: boolean;
@@ -53,7 +55,6 @@ function toAufgabe(row: AufgabeRow): Aufgabe {
     zeittyp: row.zeittyp,
     startZeit: kuerzeZeit(row.start_zeit),
     endZeit: kuerzeZeit(row.end_zeit),
-    kategorieFest: row.kategorie_fest,
     eigeneKategorieId: row.eigene_kategorie_id,
     prioritaet: row.prioritaet,
     erledigt: row.erledigt,
@@ -68,8 +69,10 @@ function toEigeneKategorie(row: KategorieRow): EigeneKategorie {
 
 /**
  * Wandelt die Formularwerte in Spalten um — insbesondere das einzelne
- * `kategorie`-Feld ("keine" | `fest:<KategorieFest>` | `eigene:<id>`) in die
- * beiden sich gegenseitig ausschließenden Spalten (siehe Tech Design).
+ * `kategorie`-Feld ("keine" | `eigene:<id>`) in die Kategorie-Spalte (siehe
+ * Tech Design). `kategorie_fest` wird seit dem Refine 2026-09-10 immer auf
+ * null gesetzt — feste Kategorien gibt es im Formular nicht mehr, die Spalte
+ * selbst entfällt erst mit der Migration in /backend.
  */
 function werteZuSpalten(values: AufgabeFormValues) {
   const datum = values.datum || null;
@@ -82,9 +85,7 @@ function werteZuSpalten(values: AufgabeFormValues) {
     zeittyp,
     start_zeit: istZeitslot ? values.startZeit : null,
     end_zeit: istZeitslot ? values.endZeit : null,
-    kategorie_fest: values.kategorie.startsWith("fest:")
-      ? (values.kategorie.slice(5) as KategorieFest)
-      : null,
+    kategorie_fest: null,
     eigene_kategorie_id: values.kategorie.startsWith("eigene:") ? values.kategorie.slice(7) : null,
     prioritaet: values.prioritaet,
     im_kalender: values.imKalender,

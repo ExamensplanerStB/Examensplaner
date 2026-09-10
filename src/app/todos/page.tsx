@@ -2,7 +2,6 @@ import { AufgabenManager } from "@/components/aufgaben/aufgaben-manager";
 import type {
   Aufgabe,
   EigeneKategorie,
-  KategorieFest,
   Prioritaet,
   Zeittyp,
 } from "@/lib/aufgaben";
@@ -32,7 +31,6 @@ export default async function TodosPage() {
     zeittyp: row.zeittyp as Zeittyp | null,
     startZeit: kuerzeZeit(row.start_zeit),
     endZeit: kuerzeZeit(row.end_zeit),
-    kategorieFest: row.kategorie_fest as KategorieFest | null,
     eigeneKategorieId: row.eigene_kategorie_id,
     prioritaet: row.prioritaet as Prioritaet,
     erledigt: row.erledigt,

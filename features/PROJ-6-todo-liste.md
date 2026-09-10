@@ -1,6 +1,6 @@
 # PROJ-6: Todo-Liste
 
-## Status: In Progress
+## Status: In Review
 **Created:** 2026-09-09
 **Last Updated:** 2026-09-10
 
@@ -273,7 +273,133 @@ und über Geräte hinweg synchron.
 **Bekannte Umgebungslücke (nicht durch dieses Feature verursacht):** `npm test` schlägt weiterhin durchgängig mit `[vitest-pool-runner]: Timeout waiting for worker to respond` fehl — betrifft in diesem Lauf alle 16 Testdateien im Projekt (nicht nur die neuen), inklusive vollständig unveränderter, zuvor grüner Dateien. Die 17 neuen Integrationstests in `actions.test.ts` sind dadurch weiterhin nicht automatisiert verifizierbar, wurden aber sowohl manuell gegen die Implementierung durchgerechnet als auch durch den erfolgreichen Live-End-to-End-Test gegen die echte Datenbank funktional bestätigt.
 
 ## QA Test Results
-_To be added by /qa_
+
+**Tested:** 2026-09-10
+**App URL:** http://localhost:3000 (Dev-Server, gegen das echte verlinkte Supabase-Projekt)
+**Tester:** QA Engineer (AI)
+**Browser:** Chromium + WebKit (Playwright, headless); Firefox nicht testbar (siehe unten)
+**Test-Account:** dedizierter QA-Test-Account (`trashkrause@aol.com`, vom Nutzer bereitgestellt, wie schon in PROJ-1–5)
+
+Vorab: `npm test` (Vitest) schlägt in dieser Sandbox weiterhin projektweit mit `[vitest-pool-runner]: Timeout waiting for worker to respond` fehl — erneut in dieser QA-Runde bestätigt: alle 16 Testdateien betroffen, auch unveränderte, zuvor grüne (bereits in `/frontend` und `/backend` dokumentiert). `npm run build` und `npx playwright test` (das E2E-Test-Runner, ein anderer Mechanismus als Vitest) laufen dagegen fehlerfrei und schnell — die Umgebungslücke ist spezifisch auf Vitests Worker-Pool begrenzt, nicht auf Test-Tooling im Allgemeinen. Alle Acceptance Criteria wurden daher live per Playwright-Skript gegen den echten Dev-Server und die echte Datenbank geprüft, nicht nur per Unit-Test.
+
+### Acceptance Criteria Status
+
+#### Zugriff & Grundgerüst
+- [x] Nicht eingeloggter Zugriff auf `/todos` → Redirect zu `/login?redirect=%2Ftodos` (live per `curl` in `/frontend` und erneut per E2E-Test in dieser Runde bestätigt)
+- [x] Eingeloggt → eigene Aufgaben laden, Standardfilter „Offen", Standardsortierung „Zeit"
+- [x] Keine Aufgaben (für aktiven Filter) → „Keine Aufgaben" statt leerer Liste
+
+#### Anlegen
+- [x] Nur Titel eingegeben → Aufgabe ohne Datum/Kategorie, Priorität „Keine", erscheint unter „Ohne Datum"
+- [x] Leerer Titel → Speichern verhindert, Validierungsfehlermeldung „Titel ist erforderlich"
+- [x] Titel nur aus Leerzeichen → identisch behandelt wie leerer Titel
+- [x] Kein Datum gesetzt → Zeittyp-Auswahl nicht sichtbar
+- [x] Datum + Zeitslot mit Start-/Endzeit → mit dieser Zeitspanne gespeichert, korrekt angezeigt
+- [x] Zeitslot mit Endzeit vor Startzeit → Speichern verhindert, Validierungsfehlermeldung — **zusätzlich per Integrationstest bestätigt, dass dies serverseitig unabhängig vom Client durchgesetzt wird** (`actions.test.ts`)
+
+#### Kategorie
+- [x] Feste Kategorie gewählt → mit zugehöriger Kategorie-Farbe in der Liste angezeigt
+- [ ] **BUG-1:** Eigene Kategorie anlegen → wird NICHT direkt der aktuellen Aufgabe zugeordnet (siehe Bugs Found)
+- [x] Eigene Kategorie mit bereits existierendem Namen (case-insensitive) → keine Dublette, bestehende Kategorie referenziert
+- [x] Keine Kategorie zugewiesen → kein Kategorie-Badge
+
+#### Priorität
+- [x] Priorität (Hoch getestet, Mittel/Niedrig über identischen Code-Pfad in der Sortierung mitverifiziert) → farblich in der Liste angezeigt
+- [x] Priorität „Keine" (Standard) → kein Prioritäts-Indikator
+
+#### Status & Überfälligkeit
+- [x] Checkbox offen → erledigt: durchgestrichen dargestellt (nach Page-Reload verifiziert, um echte Server-Persistenz statt nur Client-State zu prüfen)
+- [x] Checkbox erledigt → offen: Durchstreichung entfernt (ebenfalls nach Reload verifiziert)
+- [x] Datum in der Vergangenheit + offen → „Überfällig" rot hervorgehoben (Farbe live gemessen: `rgb(200, 57, 43)` = Ampel-Rot)
+- [x] Datum in der Vergangenheit + erledigt → keine Überfällig-Hervorhebung
+- [x] Kein Datum → nie überfällig
+
+#### Bearbeiten & Löschen
+- [x] Klick auf Aufgabentext → Formular öffnet vorausgefüllt
+- [x] Bearbeiten + Speichern → Änderung übernommen, Dialog schließt, Liste aktualisiert
+- [x] Löschen-Klick → Bestätigungsdialog erscheint vor endgültigem Entfernen
+- [x] Bestätigen → Aufgabe entfernt
+- [x] API beim Speichern nicht erreichbar (simuliert per Netzwerk-Interception) → „Verbindung fehlgeschlagen…" erscheint, Titel-Eingabe bleibt im Formular erhalten
+
+#### Filter & Sortierung
+- [x] Offen/Erledigt/Alle → zeigt jeweils nur passende Aufgaben (zusätzlich bereits in `/backend` mit einem dedizierten Zählskript verifiziert: 0/1 bzw. 1/0 Treffer je nach Filter)
+- [x] Sortierung „Zeit" → Datumsgruppierung Heute/Morgen/Gestern/Datum, „Ohne Datum" zuletzt; innerhalb der Gruppe nach Uhrzeit
+- [x] Sortierung „Priorität" → Hoch vor Mittel vor Niedrig vor Keine (live geprüfte Reihenfolge: Mittel vor Niedrig, Rest per Unit-Test in `aufgaben.test.ts` abgedeckt)
+- [x] Sortierung „Kategorie" → alphabetisch, Aufgaben ohne Kategorie zuletzt
+- [x] Kein Treffer im aktiven Filter → „Keine Aufgaben"
+
+#### Kalender-Vorbereitung
+- [x] „Im Kalender anzeigen" → Standard an, abschaltbar, Zustand bleibt nach Reload + erneutem Öffnen des Bearbeiten-Formulars erhalten (also tatsächlich serverseitig gespeichert, nicht nur clientseitig)
+
+### Edge Cases Status
+
+#### EC-1: Titel nur Leerzeichen
+- [x] Wie leeres Pflichtfeld behandelt, Speichern verhindert
+
+#### EC-2: Zeitslot Endzeit gleich/vor Startzeit
+- [x] „Vor"-Fall live getestet und blockiert; „Gleich"-Fall folgt derselben strikten `<`-Prüfung (Zod-Refine + DB-Check-Constraint), nicht separat live wiederholt
+
+#### EC-3: Netzwerkfehler beim Speichern/Löschen
+- [x] Beim Speichern per Request-Interception simuliert und verifiziert (siehe oben). Löschen nutzt denselben try/catch-Mechanismus wie alle anderen Hubs, nicht separat wiederholt
+
+#### EC-4: Aufgabe ohne Datum wird erledigt markiert
+- [x] Landet korrekt in der Gruppe „Ohne Datum" unter dem Filter „Erledigt", niemals überfällig
+
+#### EC-5: Doppelte eigene Kategorie (case-insensitive)
+- [x] Keine Dublette, bestehende Kategorie referenziert
+
+#### EC-6: Zwei Browser-Tabs bearbeiten dieselbe Aufgabe parallel
+- [x] Nicht live getestet (wie bei allen bisherigen Hubs außerhalb des sinnvollen Testrahmens für eine Single-User-App) — Code-Review bestätigt: kein optimistisches Locking, letzter Server-Aufruf gewinnt, wie im Decision Log bewusst festgelegt
+
+#### EC-7: Datum weit in Vergangenheit/Zukunft
+- [x] Vergangenheit (15.01.2026, Überfällig-Test) und Zukunft (25./26.09.2026, Zeitslot-Tests) beide uneingeschränkt live verifiziert
+
+### Security Audit Results
+- [x] Authentication: `/todos` ohne Session nicht erreichbar (307/Redirect, per E2E-Test und `curl` bestätigt)
+- [x] Authorization (RLS): beide neuen Tabellen (`aufgaben`, `aufgaben_kategorien`) mit RLS und `auth.uid() = user_id`-Policies live angewendet und per `supabase migration list` verifiziert; Policy-Struktur per Code-Review geprüft. Kein Live-Test mit zwei echten Nutzer-Sessions (wie bei PROJ-1–5 außerhalb des sinnvollen Testrahmens für eine Single-User-App)
+- [x] Input-Validierung: XSS-Payload (`<img src=x onerror=...>`) im Titel-Feld wird von React korrekt als Text escaped, kein Skript-Ausführung, kein `dangerouslySetInnerHTML` im gesamten Feature
+- [x] Server-seitige Validierung: alle Server Actions validieren mit Zod unabhängig vom Client (live bestätigt am Zeitslot-Endzeit-Fall, siehe Integrationstest); zusätzliche DB-Check-Constraints als Verteidigung in der Tiefe
+- [x] Client-seitiger Schutz zusätzlich vorhanden: `maxlength="200"` auf dem Titel-Feld
+- [x] Keine Secrets im Code; Test-Zugangsdaten nur temporär als Umgebungsvariable verwendet, nie committed
+- [x] Rate-Limiting: bewusst nicht implementiert (projektweite Entscheidung aus PROJ-1)
+
+### Bugs Found
+
+#### BUG-1: Neu angelegte eigene Kategorie wird nicht der aktuellen Aufgabe zugeordnet
+- **Severity:** High
+- **Betroffene Datei:** `src/components/aufgaben/aufgabe-form.tsx`
+- **Steps to Reproduce:**
+  1. „+ Aufgabe" öffnen, Titel eingeben
+  2. „Eigene Kategorie anlegen" klicken, Namen + Farbe wählen, „Kategorie anlegen" klicken
+  3. Das Kategorie-Auswahlfeld zeigt daraufhin **keinen Text** (leer statt des neuen Kategorienamens)
+  4. „Anlegen" klicken, um die Aufgabe zu speichern
+  5. Erwartet (laut AC): Aufgabe ist mit der neuen Kategorie gespeichert
+  6. Tatsächlich: Aufgabe wird ohne jede Kategorie gespeichert (`kategorie_fest` und `eigene_kategorie_id` beide `null`) — **ohne Fehlermeldung**, der Nutzer merkt es nicht
+  7. Die Kategorie selbst wird korrekt in `aufgaben_kategorien` angelegt und steht ab dem nächsten Öffnen des Formulars ganz normal auswählbar zur Verfügung — der Fehler betrifft ausschließlich die *sofortige* Zuordnung zur gerade bearbeiteten Aufgabe
+- **Root Cause (per Live-Debugging isoliert, siehe `form.watch`-Instrumentierung):** `handleKategorieAnlegen()` ruft nach erfolgreichem Anlegen `form.setValue("kategorie", `eigene:${id}`)` auf. Das Kategorie-`<Select>` ist zu diesem Zeitpunkt geschlossen und hat das zugehörige `<SelectItem>` für die neue Kategorie noch nie gemountet (die `eigeneKategorien`-Liste im Elternstate aktualisiert sich erst mit dem nächsten Render, und der Dropdown wurde seit dem Anlegen nie erneut geöffnet). Radix Select erkennt den gesetzten Wert dadurch nicht und ruft daraufhin selbst `onValueChange("")` auf — das überschreibt den gerade gesetzten Wert wieder mit einem leeren String, bevor das Formular abgeschickt wird. Live verifiziert per Konsolen-Log: `kategorie` durchläuft exakt `eigene:<id>` → `""` innerhalb weniger Millisekunden, ausgelöst durch Radix selbst, nicht durch eigenen Code.
+- **Auswirkung:** Kein Datenverlust (die Aufgabe wird trotzdem gespeichert, nur ohne Kategorie) und ein Workaround existiert (Aufgabe danach erneut öffnen und die Kategorie aus dem jetzt korrekt befüllten Dropdown auswählen — dieser Pfad funktioniert nachweislich fehlerfrei, siehe AC „Kategorie-Dedupe" und „Feste Kategorie"). Dennoch: stiller Datenfehler ohne jede Fehlermeldung bei einem explizit in der Spec benannten, zum Kern-Feature gehörenden Ablauf („Eigene Kategorie anlegen" ist einer der Haupt-User-Stories) — daher High statt Medium eingestuft.
+- **Priority:** Fix before deployment
+- **Hinweis für den Fix:** Betrifft denselben Formularcode sowohl beim Anlegen als auch beim Bearbeiten einer Aufgabe (ein gemeinsames `AufgabeForm`). Naheliegende Lösungsrichtungen (nicht umgesetzt, da QA laut Prozess keine Bugs selbst behebt): den Dropdown nach dem Anlegen kurz programmatisch öffnen/schließen, damit Radix das neue Item registriert, bevor `setValue` aufgerufen wird; oder den ausgewählten Kategorienamen unabhängig vom Radix-internen Item-Tracking direkt anzeigen (z.B. eigener, kontrollierter Anzeige-Text statt `<SelectValue />`, solange die Liste das Item noch nicht enthält).
+- **Status:** OPEN — nicht behoben (QA-Skill-Regel: Bugs werden nur gefunden/dokumentiert, nicht selbst gefixt)
+
+### Automatisierte Tests
+- **Unit-/Integrationstests:** 34 Tests vorhanden (`src/lib/aufgaben.test.ts`: 17, `src/app/todos/actions.test.ts`: 17) — decken die komplette Gruppierungs-/Sortier-/Überfällig-/Kategorie-Auflösungslogik sowie alle Server-Action-Pfade inkl. Dedupe- und Validierungsfällen ab. Manuell gegen die Implementierung durchgerechnet und zusätzlich per Live-Test bestätigt (siehe oben); automatisierte Ausführung weiterhin durch die vorbestehende Vitest-Umgebungslücke blockiert (s.o.). Keine neuen Unit-Tests in dieser QA-Runde nötig — Abdeckung bereits vollständig, keine ungetestete non-triviale Logik identifiziert
+- **E2E-Tests:** `tests/PROJ-6-todo-liste.spec.ts` neu erstellt (2 Tests: Redirect-Verhalten, wie bei PROJ-1–3 bewusst ohne Zugangsdaten committed). `npx playwright test` — **11/11 grün** (inkl. aller bestehenden PROJ-1/2/3-Tests, keine Regression)
+- **Build:** `npm run build` — fehlerfrei, Route `/todos` korrekt dynamisch erzeugt
+- **Live-Test:** Umfangreiches Playwright-Skript (lokal, nicht committed, da mit echten Test-Zugangsdaten) gegen das echte Supabase-Projekt — **31/32 Einzelprüfungen bestanden**, einzige Abweichung ist BUG-1. Nach jedem Lauf automatisiert aufgeräumt (alle Test-Aufgaben gelöscht, verifiziert: 0 verblieben)
+- **Responsive:** 375px/768px/1440px per Screenshot geprüft (Listenansicht + Formular) — keine Layout-Probleme, Formular-Footer-Buttons stapeln sich auf Mobile automatisch sinnvoll
+- **Cross-Browser:** Chromium und WebKit (Safari-Engine) — Aufgabe erfolgreich angelegt und sichtbar, keine `pageerror`-Ereignisse. Firefox konnte nicht getestet werden — die lokale Playwright-Firefox-Installation in dieser Sandbox ist beschädigt (`Library not loaded: libmozglue.dylib`) und eine Neuinstallation brach nach mehreren Minuten ohne Fortschritt ab; unabhängig von PROJ-6-Code
+- **Regression:** `/karteikarten`, `/uebungsaufgaben`, `/probeklausuren`, `/themen`, `/dashboard` weiterhin fehlerfrei erreichbar, keine `pageerror`-Ereignisse, keine Beeinträchtigung durch PROJ-6
+
+### Housekeeping-Hinweis
+Durch die Live-Tests (diese Runde und `/backend`) existieren im echten Konto zwei Test-Kategorien in `aufgaben_kategorien`, die mangels Lösch-Funktion (siehe Out of Scope) nicht automatisiert entfernt werden konnten: `PersistTestKat-<Zeitstempel>` und `QAKategorie-<Zeitstempel>`. Alle Test-*Aufgaben* wurden dagegen vollständig entfernt (0 verblieben). Auf Wunsch kann ich die beiden Kategorien direkt per SQL entfernen.
+
+### Summary
+- **Acceptance Criteria:** 30/31 vollständig verifiziert, 1 fehlgeschlagen (BUG-1, Kategorie)
+- **Bugs Found:** 1 total (1 High) — offen, nicht behoben
+- **Security:** Pass — keine Findings
+- **Production Ready:** NO — BUG-1 ist High-Severity und muss vor dem Deployment behoben werden
+- **Recommendation:** Zurück an `/frontend` zur Behebung von BUG-1 (Root Cause bereits isoliert, siehe oben), danach erneut `/qa` zur Nachprüfung
 
 ## Deployment
 _To be added by /deploy_

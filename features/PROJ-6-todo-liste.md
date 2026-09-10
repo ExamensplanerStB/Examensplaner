@@ -1,6 +1,6 @@
 # PROJ-6: Todo-Liste
 
-## Status: In Progress
+## Status: Approved
 **Created:** 2026-09-09
 **Last Updated:** 2026-09-10
 
@@ -470,12 +470,47 @@ Nach dem Fix in `aufgabe-form.tsx` (siehe BUG-1 und Frontend Implementation Note
 - `npm run build` fehlerfrei, `npx playwright test` weiterhin 11/11 grün, `npm test` weiterhin durch dieselbe vorbestehende Vitest-Umgebungslücke blockiert (unverändert, nicht PROJ-6-spezifisch)
 - Testdaten danach vollständig entfernt (0 Test-Aufgaben verblieben; die in dieser Runde neu angelegte Test-Kategorie `BugfixCheck-<Zeitstempel>` bleibt mangels Lösch-Funktion bestehen, siehe Housekeeping-Hinweis — betrifft nur `aufgaben_kategorien`, keine Aufgaben)
 
-### Summary
-- **Acceptance Criteria:** 31/31 vollständig verifiziert — **keine offenen Abweichungen**
-- **Bugs Found:** 1 total (1 High) — **gefixt und nachgetestet, keine offenen Bugs**
-- **Security:** Pass — keine Findings
-- **Production Ready:** YES — BUG-1 behoben und mit drei Verifikationsebenen (Anzeige, Vor-Reload, Nach-Reload) nachgetestet, keine Regression, kein weiterer offener Bug
-- **Recommendation:** Deploy. Firefox blieb wegen einer defekten lokalen Playwright-Installation in dieser Sandbox ungetestet (siehe oben) — kein PROJ-6-spezifisches Risiko, da Chromium und WebKit (Safari-Engine) beide sauber sind; bei Gelegenheit extern nachholen
+### Refine-QA 2026-09-10 (Feste Kategorien entfernt, Kategorie-Löschen)
+
+**Getestet:** live gegen das echte, verlinkte Supabase-Projekt (Dev-Server + Playwright, QA-Test-Account, nicht committed). `npm run build` fehlerfrei, `npx playwright test` **22/22 grün** (bestehende committete Suite, keine Regression). `npm test` erneut bestätigt weiterhin durch dieselbe vorbestehende Vitest-Umgebungslücke blockiert (`[vitest-pool-runner]: Timeout waiting for worker to respond`, alle 16 Testdateien betroffen, nicht PROJ-6-spezifisch). Keine neuen committeten E2E-Tests nötig: die beiden bestehenden Tests in `tests/PROJ-6-todo-liste.spec.ts` (Redirect-Verhalten, ohne Zugangsdaten) decken weiterhin alles ab, was ohne Login testbar ist — die neuen, authentifizierten Kategorie-ACs folgen demselben Muster wie der Rest des Features (live statt committed, siehe oben).
+
+**Neue Acceptance Criteria (Kategorie-Löschen):**
+- [x] Panel „Eigene Kategorie anlegen" zeigt Liste aller vorhandenen eigenen Kategorien, je mit Löschen-Icon
+- [x] Klick auf Löschen-Icon → Bestätigungsdialog erscheint vor endgültigem Entfernen (Dialogtext live geprüft: warnt korrekt, dass Aufgaben erhalten bleiben und nur das Badge verlieren)
+- [x] Bestätigen bei einer Kategorie mit zugeordneter Aufgabe → Aufgabe bleibt nach vollständigem Reload erhalten, verliert ausschließlich das Kategorie-Badge, alle anderen Felder unverändert
+
+**Zusätzlich geprüft (über die ACs hinaus):**
+- [x] Abbrechen im Bestätigungsdialog → Kategorie bleibt bestehen, kein Löschen
+- [x] Edge Case „Kategorie mit vielen zugeordneten Aufgaben" (3 Aufgaben gleichzeitig zugeordnet) → nach Löschen bleiben alle drei Aufgaben erhalten, alle verlieren gleichzeitig das Badge, verifiziert nach vollständigem Reload
+- [x] Edge Case „letzte verbleibende eigene Kategorie wird gelöscht" → nicht live gegen den echten Account getestet (hätte die letzte reale Kategorie des Nutzers löschen müssen, dafür nicht sinnvoll); stattdessen per Code-Review bestätigt: sowohl die Liste im Panel als auch die „Eigene Kategorien"-Gruppe im Select sind mit `{eigeneKategorien.length > 0 && (...)}` geschützt, verschwinden bei 0 Kategorien also sauber ohne Fehlerzustand
+
+**Regression (bestehende ACs nach Schema-Änderung `eigene_kategorie_id` → `kategorie_id`):**
+- [x] „Feste Kategorien"-Gruppe existiert nicht mehr im Kategorie-Dropdown (vollständig entfernt, wie in der Refine-Spec festgelegt — die alte AC „Feste Kategorie gewählt" aus der ersten QA-Runde ist damit gegenstandslos und durch die drei neuen Kategorie-ACs oben ersetzt)
+- [x] Leerer Titel → weiterhin Validierungsfehler, kein Speichern
+- [x] Sortierung „Kategorie" → alphabetisch korrekt, durchläuft das umbenannte `kategorieId`-Feld vollständig End-to-End (Datenbank → Server Action → Anzeige)
+- [x] Bearbeiten-Formular zeigt bei einer Aufgabe mit zugeordneter Kategorie diese weiterhin korrekt vorausgefüllt
+- [x] Filter „Offen"/„Erledigt"/„Alle" weiterhin korrekt
+- [x] Checkbox-Toggle (offen ↔ erledigt) weiterhin korrekt
+- [x] Netzwerkfehler-Simulation beim Speichern → weiterhin korrekte Fehlermeldung, Eingabe bleibt erhalten
+- [x] Keine JS-`pageerror`-Ereignisse während des gesamten Testlaufs
+
+**Security Audit (Refine-spezifisch):**
+- [x] XSS-Payload (`<img src=x onerror=alert(1)>`) als Kategoriename → als reiner Text angezeigt, kein `<img>`-Element im DOM, kein Skript ausgeführt (React-Escaping greift auch im neuen Lösch-Bestätigungsdialog, der den Namen direkt interpoliert)
+- [x] Authorization (RLS): neue DELETE-Policy auf `aufgaben_kategorien` unabhängig per SQL verifiziert (`pg_get_expr(polqual, ...)` = `(auth.uid() = user_id)`, identisch zum bestehenden SELECT-Muster) — ein Nutzer kann ausschließlich eigene Kategorien löschen. Kein Live-Test mit zwei echten Nutzer-Sessions (wie bei allen bisherigen Hubs außerhalb des sinnvollen Testrahmens für eine Single-User-App)
+- [x] Migration korrekt angewendet: `kategorie_fest`-Spalte samt beider zugehöriger Check-Constraints vollständig entfernt, `kategorie_id` als einzige verbleibende Kategorie-Spalte bestätigt (per SQL-Spaltenliste)
+
+**Cross-Browser & Regression auf andere Hubs:** Chromium und WebKit (Safari-Engine) — `/dashboard`, `/karteikarten`, `/uebungsaufgaben`, `/probeklausuren`, `/themen`, `/todos` laden in beiden Browsern fehlerfrei, keine `pageerror`-Ereignisse, keine Beeinträchtigung durch die PROJ-6-Änderungen. Firefox weiterhin ungetestet (vorbestehende defekte lokale Installation, siehe oben).
+
+**Bugs Found:** 0 (keine neuen Bugs in dieser Runde; BUG-1 aus der ersten Runde bleibt gefixt und nachgetestet)
+
+**Housekeeping:** Alle in dieser Runde sowie die aus der `/frontend`- und `/backend`-Phase übrig gebliebenen Test-Kategorien (`PersistTestKat-…`, `QAKategorie-…`, `BugfixCheck-…`, `UITest-…`) sind jetzt vollständig entfernt — die Löschfunktion aus diesem Refine machte das erstmals möglich. Der alte Housekeeping-Hinweis oben ist damit erledigt; 0 Test-Artefakte verbleiben im echten Konto (Kategorien und Aufgaben gleichermaßen, jeweils per Reload-Check bestätigt).
+
+### Summary (Gesamtstand nach Refine)
+- **Acceptance Criteria:** 34/34 vollständig verifiziert (31 aus der ursprünglichen Spec, davon 3 durch die Refine-ACs zur Kategorie ersetzt/ergänzt, macht 34 aktuell gültige ACs insgesamt) — **keine offenen Abweichungen**
+- **Bugs Found (kumulativ):** 1 total (1 High, BUG-1) — **gefixt und zweifach nachgetestet, keine offenen Bugs**
+- **Security:** Pass — keine Findings, inkl. neu geprüfter RLS-DELETE-Policy und XSS-Check am neuen Kategorie-Namensfeld
+- **Production Ready:** YES
+- **Recommendation:** Deploy. Firefox bleibt aus denselben vorbestehenden, nicht PROJ-6-spezifischen Gründen ungetestet wie in der ersten Runde (Chromium + WebKit beide sauber)
 
 ## Deployment
 

@@ -45,3 +45,14 @@ export const aufgabeSchema = z
   );
 
 export type AufgabeFormValues = z.infer<typeof aufgabeSchema>;
+
+export const eigeneKategorieFarbeSchema = z
+  .string()
+  .min(1, "Farbe ist erforderlich");
+
+export const eigeneKategorieSchema = z.object({
+  name: eigeneKategorieNameSchema,
+  farbe: eigeneKategorieFarbeSchema,
+});
+
+export type EigeneKategorieFormValues = z.infer<typeof eigeneKategorieSchema>;

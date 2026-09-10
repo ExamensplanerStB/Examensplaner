@@ -1,11 +1,50 @@
 import { AufgabenManager } from "@/components/aufgaben/aufgaben-manager";
-import type { Aufgabe, EigeneKategorie } from "@/lib/aufgaben";
+import type {
+  Aufgabe,
+  EigeneKategorie,
+  KategorieFest,
+  Prioritaet,
+  Zeittyp,
+} from "@/lib/aufgaben";
+import { createClient } from "@/lib/supabase/server";
 
-export default function TodosPage() {
-  // Die "aufgaben"-/"aufgaben_kategorien"-Tabellen existieren erst nach
-  // /backend — bis dahin startet die Liste clientseitig leer.
-  const initialAufgaben: Aufgabe[] = [];
-  const initialEigeneKategorien: EigeneKategorie[] = [];
+function kuerzeZeit(zeit: string | null): string | null {
+  return zeit ? zeit.slice(0, 5) : null;
+}
+
+export default async function TodosPage() {
+  const supabase = await createClient();
+
+  const [{ data: aufgabenRows }, { data: kategorienRows }] = await Promise.all([
+    supabase
+      .from("aufgaben")
+      .select(
+        "id, titel, datum, zeittyp, start_zeit, end_zeit, kategorie_fest, eigene_kategorie_id, prioritaet, erledigt, im_kalender, created_at"
+      )
+      .order("created_at", { ascending: false }),
+    supabase.from("aufgaben_kategorien").select("id, name, farbe").order("name"),
+  ]);
+
+  const initialAufgaben: Aufgabe[] = (aufgabenRows ?? []).map((row) => ({
+    id: row.id,
+    titel: row.titel,
+    datum: row.datum,
+    zeittyp: row.zeittyp as Zeittyp | null,
+    startZeit: kuerzeZeit(row.start_zeit),
+    endZeit: kuerzeZeit(row.end_zeit),
+    kategorieFest: row.kategorie_fest as KategorieFest | null,
+    eigeneKategorieId: row.eigene_kategorie_id,
+    prioritaet: row.prioritaet as Prioritaet,
+    erledigt: row.erledigt,
+    imKalender: row.im_kalender,
+    createdAt: row.created_at,
+  }));
+
+  const initialEigeneKategorien: EigeneKategorie[] = (kategorienRows ?? []).map((row) => ({
+    id: row.id,
+    name: row.name,
+    farbe: row.farbe,
+  }));
 
   return (
     <main className="min-h-screen bg-background p-4 sm:p-8">

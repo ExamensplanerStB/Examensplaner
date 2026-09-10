@@ -15,15 +15,21 @@ import {
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import {
+  CONNECTION_ERROR,
   gruppiereAufgaben,
-  heuteISO,
   type Aufgabe,
   type EigeneKategorie,
-  type KategorieFest,
   type SortModus,
   type StatusFilter,
 } from "@/lib/aufgaben";
 import type { AufgabeFormValues } from "@/lib/schemas/aufgabe";
+import {
+  createAufgabe,
+  createEigeneKategorie,
+  deleteAufgabe,
+  setAufgabeErledigt,
+  updateAufgabe,
+} from "@/app/todos/actions";
 
 import { AufgabeForm } from "./aufgabe-form";
 import { AufgabeZeile } from "./aufgabe-zeile";
@@ -44,32 +50,6 @@ const SORT_OPTIONEN: { value: SortModus; label: string }[] = [
   { value: "prioritaet", label: "Priorität" },
   { value: "kategorie", label: "Kategorie" },
 ];
-
-function neueId(prefix: string): string {
-  return typeof crypto !== "undefined" && "randomUUID" in crypto
-    ? crypto.randomUUID()
-    : `${prefix}${Date.now()}-${Math.random().toString(36).slice(2)}`;
-}
-
-function werteZuAufgabeFelder(values: AufgabeFormValues): Omit<Aufgabe, "id" | "createdAt" | "erledigt"> {
-  const datum = values.datum || null;
-  const zeittyp = datum ? (values.zeittyp === "zeitslot" ? "zeitslot" : "ganztag") : null;
-  const istZeitslot = zeittyp === "zeitslot";
-
-  return {
-    titel: values.titel.trim(),
-    datum,
-    zeittyp,
-    startZeit: istZeitslot ? values.startZeit : null,
-    endZeit: istZeitslot ? values.endZeit : null,
-    kategorieFest: values.kategorie.startsWith("fest:")
-      ? (values.kategorie.slice(5) as KategorieFest)
-      : null,
-    eigeneKategorieId: values.kategorie.startsWith("eigene:") ? values.kategorie.slice(7) : null,
-    prioritaet: values.prioritaet,
-    imKalender: values.imKalender,
-  };
-}
 
 export function AufgabenManager({ initialAufgaben, initialEigeneKategorien }: AufgabenManagerProps) {
   const [aufgaben, setAufgaben] = useState<Aufgabe[]>(initialAufgaben);
@@ -99,38 +79,45 @@ export function AufgabenManager({ initialAufgaben, initialEigeneKategorien }: Au
     name: string,
     farbe: string
   ): Promise<{ error: string } | { kategorie: EigeneKategorie }> {
-    const trimmed = name.trim();
-    if (!trimmed) return { error: "Name ist erforderlich" };
-    if (trimmed.length > 60) return { error: "Name darf maximal 60 Zeichen lang sein" };
-
-    const bestehend = eigeneKategorien.find((k) => k.name.toLowerCase() === trimmed.toLowerCase());
-    if (bestehend) return { kategorie: bestehend };
-
-    const neue: EigeneKategorie = { id: neueId("kategorie"), name: trimmed, farbe };
-    setEigeneKategorien((prev) => [...prev, neue]);
-    return { kategorie: neue };
+    try {
+      const result = await createEigeneKategorie(name, farbe);
+      if ("error" in result) return result;
+      setEigeneKategorien((prev) =>
+        prev.some((k) => k.id === result.kategorie.id) ? prev : [...prev, result.kategorie]
+      );
+      return result;
+    } catch {
+      return { error: CONNECTION_ERROR };
+    }
   }
 
   async function handleFormSubmit(values: AufgabeFormValues): Promise<string | null> {
-    const felder = werteZuAufgabeFelder(values);
+    try {
+      if (editingAufgabe) {
+        const result = await updateAufgabe(editingAufgabe.id, values);
+        if ("error" in result) return result.error;
+        setAufgaben((prev) => prev.map((a) => (a.id === editingAufgabe.id ? result.aufgabe : a)));
+        return null;
+      }
 
-    if (editingAufgabe) {
-      setAufgaben((prev) => prev.map((a) => (a.id === editingAufgabe.id ? { ...a, ...felder } : a)));
+      const result = await createAufgabe(values);
+      if ("error" in result) return result.error;
+      setAufgaben((prev) => [result.aufgabe, ...prev]);
       return null;
+    } catch {
+      return CONNECTION_ERROR;
     }
-
-    const neue: Aufgabe = {
-      id: neueId("aufgabe"),
-      createdAt: heuteISO(),
-      erledigt: false,
-      ...felder,
-    };
-    setAufgaben((prev) => [neue, ...prev]);
-    return null;
   }
 
-  function toggleErledigt(id: string) {
-    setAufgaben((prev) => prev.map((a) => (a.id === id ? { ...a, erledigt: !a.erledigt } : a)));
+  async function toggleErledigt(aufgabe: Aufgabe): Promise<string | null> {
+    try {
+      const result = await setAufgabeErledigt(aufgabe.id, !aufgabe.erledigt);
+      if ("error" in result) return result.error;
+      setAufgaben((prev) => prev.map((a) => (a.id === aufgabe.id ? result.aufgabe : a)));
+      return null;
+    } catch {
+      return CONNECTION_ERROR;
+    }
   }
 
   function requestDelete(aufgabe: Aufgabe) {
@@ -141,9 +128,19 @@ export function AufgabenManager({ initialAufgaben, initialEigeneKategorien }: Au
   async function confirmDelete() {
     if (!pendingDelete) return;
     setIsDeleting(true);
-    setAufgaben((prev) => prev.filter((a) => a.id !== pendingDelete.id));
-    setIsDeleting(false);
-    setPendingDelete(null);
+    try {
+      const result = await deleteAufgabe(pendingDelete.id);
+      if ("error" in result) {
+        setDeleteError(result.error);
+        return;
+      }
+      setAufgaben((prev) => prev.filter((a) => a.id !== pendingDelete.id));
+      setPendingDelete(null);
+    } catch {
+      setDeleteError(CONNECTION_ERROR);
+    } finally {
+      setIsDeleting(false);
+    }
   }
 
   const gefiltert = aufgaben.filter((a) => {
@@ -215,7 +212,7 @@ export function AufgabenManager({ initialAufgaben, initialEigeneKategorien }: Au
                     aufgabe={aufgabe}
                     eigeneKategorien={eigeneKategorien}
                     istLetzte={index === gruppe.aufgaben.length - 1}
-                    onToggleErledigt={() => toggleErledigt(aufgabe.id)}
+                    onToggleErledigt={() => toggleErledigt(aufgabe)}
                     onEdit={() => openEditForm(aufgabe)}
                     onDeleteRequest={() => requestDelete(aufgabe)}
                   />

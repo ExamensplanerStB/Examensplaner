@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -20,7 +21,7 @@ interface AufgabeZeileProps {
   aufgabe: Aufgabe;
   eigeneKategorien: EigeneKategorie[];
   istLetzte: boolean;
-  onToggleErledigt: () => void;
+  onToggleErledigt: () => Promise<string | null>;
   onEdit: () => void;
   onDeleteRequest: () => void;
 }
@@ -33,15 +34,26 @@ export function AufgabeZeile({
   onEdit,
   onDeleteRequest,
 }: AufgabeZeileProps) {
+  const [toggleError, setToggleError] = useState<string | null>(null);
+  const [isToggling, setIsToggling] = useState(false);
+
   const kategorie = kategorieVon(aufgabe, eigeneKategorien);
   const ueberfaellig = istUeberfaellig(aufgabe);
   const zeit = zeitAnzeige(aufgabe);
+
+  async function handleToggle() {
+    setIsToggling(true);
+    const error = await onToggleErledigt();
+    setIsToggling(false);
+    setToggleError(error);
+  }
 
   return (
     <div className={cn("flex items-center gap-3 px-4 py-3", !istLetzte && "border-b border-border")}>
       <Checkbox
         checked={aufgabe.erledigt}
-        onCheckedChange={onToggleErledigt}
+        onCheckedChange={handleToggle}
+        disabled={isToggling}
         aria-label={
           aufgabe.erledigt
             ? `„${kurzerText(aufgabe.titel)}“ als offen markieren`
@@ -70,6 +82,11 @@ export function AufgabeZeile({
           <p className={cn("mt-0.5 text-xs", ueberfaellig ? "font-semibold text-ampel-red" : "text-ink-3")}>
             {ueberfaellig ? "Überfällig · " : ""}
             {zeit}
+          </p>
+        )}
+        {toggleError && (
+          <p className="mt-0.5 text-xs text-destructive" role="alert">
+            {toggleError}
           </p>
         )}
       </div>

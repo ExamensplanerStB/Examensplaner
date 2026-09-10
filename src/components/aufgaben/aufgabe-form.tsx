@@ -61,7 +61,7 @@ interface AufgabeFormProps {
 
 function kategorieWertVon(aufgabe: Aufgabe | null): string {
   if (!aufgabe) return "keine";
-  if (aufgabe.eigeneKategorieId) return `eigene:${aufgabe.eigeneKategorieId}`;
+  if (aufgabe.kategorieId) return `eigene:${aufgabe.kategorieId}`;
   return "keine";
 }
 

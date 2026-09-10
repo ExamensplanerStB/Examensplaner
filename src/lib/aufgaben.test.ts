@@ -18,7 +18,7 @@ function aufgabe(overrides: Partial<Aufgabe> = {}): Aufgabe {
     zeittyp: null,
     startZeit: null,
     endZeit: null,
-    eigeneKategorieId: null,
+    kategorieId: null,
     prioritaet: "keine",
     erledigt: false,
     imKalender: true,
@@ -89,18 +89,18 @@ describe("kategorieVon", () => {
   const eigeneKategorien: EigeneKategorie[] = [{ id: "k1", name: "Repetitorium", farbe: "#2A6FDB" }];
 
   it("eigene Kategorie -> Name + gewählte Farbe", () => {
-    expect(kategorieVon({ eigeneKategorieId: "k1" }, eigeneKategorien)).toEqual({
+    expect(kategorieVon({ kategorieId: "k1" }, eigeneKategorien)).toEqual({
       label: "Repetitorium",
       farbe: "#2A6FDB",
     });
   });
 
   it("keine Kategorie -> null", () => {
-    expect(kategorieVon({ eigeneKategorieId: null }, eigeneKategorien)).toBeNull();
+    expect(kategorieVon({ kategorieId: null }, eigeneKategorien)).toBeNull();
   });
 
   it("eigene Kategorie wurde gelöscht/existiert nicht mehr -> null", () => {
-    expect(kategorieVon({ eigeneKategorieId: "unbekannt" }, eigeneKategorien)).toBeNull();
+    expect(kategorieVon({ kategorieId: "unbekannt" }, eigeneKategorien)).toBeNull();
   });
 });
 
@@ -149,9 +149,9 @@ describe("gruppiereAufgaben", () => {
       { id: "k2", name: "Frist", farbe: "#B5384E" },
     ];
     const aufgaben = [
-      aufgabe({ id: "a1", titel: "X", datum: "2026-09-09", eigeneKategorieId: "k1" }),
-      aufgabe({ id: "a2", titel: "Y", datum: "2026-09-09", eigeneKategorieId: null }),
-      aufgabe({ id: "a3", titel: "Z", datum: "2026-09-09", eigeneKategorieId: "k2" }),
+      aufgabe({ id: "a1", titel: "X", datum: "2026-09-09", kategorieId: "k1" }),
+      aufgabe({ id: "a2", titel: "Y", datum: "2026-09-09", kategorieId: null }),
+      aufgabe({ id: "a3", titel: "Z", datum: "2026-09-09", kategorieId: "k2" }),
     ];
     const gruppen = gruppiereAufgaben(aufgaben, "kategorie", eigeneKategorien, heute);
     // "Frist" < "Wiederholung" alphabetisch, ohne Kategorie zuletzt

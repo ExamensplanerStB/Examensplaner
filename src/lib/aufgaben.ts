@@ -26,7 +26,7 @@ export interface Aufgabe {
   startZeit: string | null;
   endZeit: string | null;
   /** Wird automatisch null, sobald die referenzierte Kategorie gelöscht wird. */
-  eigeneKategorieId: string | null;
+  kategorieId: string | null;
   prioritaet: Prioritaet;
   erledigt: boolean;
   /** Datenfeld für die spätere Kalenderdarstellung in PROJ-9, siehe Tech Design. */
@@ -114,11 +114,11 @@ export interface KategorieAnzeige {
 }
 
 export function kategorieVon(
-  aufgabe: Pick<Aufgabe, "eigeneKategorieId">,
+  aufgabe: Pick<Aufgabe, "kategorieId">,
   eigeneKategorien: EigeneKategorie[]
 ): KategorieAnzeige | null {
-  if (aufgabe.eigeneKategorieId) {
-    const eigene = eigeneKategorien.find((k) => k.id === aufgabe.eigeneKategorieId);
+  if (aufgabe.kategorieId) {
+    const eigene = eigeneKategorien.find((k) => k.id === aufgabe.kategorieId);
     if (eigene) return { label: eigene.name, farbe: eigene.farbe };
   }
   return null;

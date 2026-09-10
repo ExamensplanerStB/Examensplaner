@@ -31,8 +31,14 @@ vi.mock("next/cache", () => ({
   revalidatePath: (path: string) => revalidatePathMock(path),
 }));
 
-const { createAufgabe, updateAufgabe, setAufgabeErledigt, deleteAufgabe, createEigeneKategorie } =
-  await import("./actions");
+const {
+  createAufgabe,
+  updateAufgabe,
+  setAufgabeErledigt,
+  deleteAufgabe,
+  createEigeneKategorie,
+  deleteEigeneKategorie,
+} = await import("./actions");
 
 const GUELTIGE_WERTE: AufgabeFormValues = {
   titel: "Wiederholung USt-Fälle",
@@ -52,8 +58,7 @@ const AUFGABE_ROW = {
   zeittyp: null,
   start_zeit: null,
   end_zeit: null,
-  kategorie_fest: null,
-  eigene_kategorie_id: null,
+  kategorie_id: null,
   prioritaet: "keine",
   erledigt: false,
   im_kalender: true,
@@ -104,14 +109,13 @@ describe("createAufgabe", () => {
         erledigt: false,
         datum: null,
         zeittyp: null,
-        kategorie_fest: null,
-        eigene_kategorie_id: null,
+        kategorie_id: null,
       })
     );
     expect(revalidatePathMock).toHaveBeenCalledWith("/todos");
   });
 
-  it("splittet 'fest:<key>' in kategorie_fest und setzt Start-/Endzeit bei Zeittyp 'zeitslot'", async () => {
+  it("splittet 'eigene:<id>' in kategorie_id und setzt Start-/Endzeit bei Zeittyp 'zeitslot'", async () => {
     const insertAufgabe = chain({ data: AUFGABE_ROW, error: null });
     from.mockReturnValueOnce(insertAufgabe);
 
@@ -121,7 +125,7 @@ describe("createAufgabe", () => {
       zeittyp: "zeitslot",
       startZeit: "09:00",
       endZeit: "10:00",
-      kategorie: "fest:wiederholung",
+      kategorie: "eigene:kat-1",
     });
 
     expect(insertAufgabe.insert).toHaveBeenCalledWith(
@@ -130,13 +134,12 @@ describe("createAufgabe", () => {
         zeittyp: "zeitslot",
         start_zeit: "09:00",
         end_zeit: "10:00",
-        kategorie_fest: "wiederholung",
-        eigene_kategorie_id: null,
+        kategorie_id: "kat-1",
       })
     );
   });
 
-  it("splittet 'eigene:<id>' in eigene_kategorie_id und setzt Zeittyp 'ganztag' als Standard bei gesetztem Datum", async () => {
+  it("setzt Zeittyp 'ganztag' als Standard bei gesetztem Datum ohne Zeitslot", async () => {
     const insertAufgabe = chain({ data: AUFGABE_ROW, error: null });
     from.mockReturnValueOnce(insertAufgabe);
 
@@ -153,8 +156,7 @@ describe("createAufgabe", () => {
         zeittyp: "ganztag",
         start_zeit: null,
         end_zeit: null,
-        kategorie_fest: null,
-        eigene_kategorie_id: "kat-1",
+        kategorie_id: "kat-1",
       })
     );
   });
@@ -284,6 +286,25 @@ describe("createEigeneKategorie", () => {
   it("zeigt die Verbindungsfehler-Meldung bei einem anderen Fehler als einer Dublette", async () => {
     from.mockReturnValueOnce(chain({ data: null, error: { code: "other" } }));
     const result = await createEigeneKategorie("Repetitorium", "#2A6FDB");
+    expect(result).toEqual({ error: CONNECTION_ERROR });
+  });
+});
+
+describe("deleteEigeneKategorie", () => {
+  it("löscht eine Kategorie erfolgreich", async () => {
+    const deleteChain = chain({ error: null });
+    from.mockReturnValueOnce(deleteChain);
+
+    const result = await deleteEigeneKategorie("kat-1");
+
+    expect(result).toEqual({ success: true });
+    expect(deleteChain.delete).toHaveBeenCalled();
+    expect(revalidatePathMock).toHaveBeenCalledWith("/todos");
+  });
+
+  it("zeigt die Verbindungsfehler-Meldung, wenn das Löschen fehlschlägt", async () => {
+    from.mockReturnValueOnce(chain({ error: { code: "other" } }));
+    const result = await deleteEigeneKategorie("kat-1");
     expect(result).toEqual({ error: CONNECTION_ERROR });
   });
 });

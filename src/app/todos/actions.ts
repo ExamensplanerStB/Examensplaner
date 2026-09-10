@@ -19,7 +19,7 @@ import {
 const UNIQUE_VIOLATION = "23505";
 
 const AUFGABE_SELECT =
-  "id, titel, datum, zeittyp, start_zeit, end_zeit, kategorie_fest, eigene_kategorie_id, prioritaet, erledigt, im_kalender, created_at";
+  "id, titel, datum, zeittyp, start_zeit, end_zeit, kategorie_id, prioritaet, erledigt, im_kalender, created_at";
 const KATEGORIE_SELECT = "id, name, farbe";
 
 type AufgabeRow = {
@@ -29,11 +29,7 @@ type AufgabeRow = {
   zeittyp: Zeittyp | null;
   start_zeit: string | null;
   end_zeit: string | null;
-  // Spalte existiert in der DB noch (Entfernung erfolgt in /backend), wird
-  // seit dem Refine 2026-09-10 aber nicht mehr gelesen/geschrieben — feste
-  // Kategorien gibt es im Anwendungscode nicht mehr.
-  kategorie_fest: string | null;
-  eigene_kategorie_id: string | null;
+  kategorie_id: string | null;
   prioritaet: Prioritaet;
   erledigt: boolean;
   im_kalender: boolean;
@@ -55,7 +51,7 @@ function toAufgabe(row: AufgabeRow): Aufgabe {
     zeittyp: row.zeittyp,
     startZeit: kuerzeZeit(row.start_zeit),
     endZeit: kuerzeZeit(row.end_zeit),
-    eigeneKategorieId: row.eigene_kategorie_id,
+    kategorieId: row.kategorie_id,
     prioritaet: row.prioritaet,
     erledigt: row.erledigt,
     imKalender: row.im_kalender,
@@ -70,9 +66,7 @@ function toEigeneKategorie(row: KategorieRow): EigeneKategorie {
 /**
  * Wandelt die Formularwerte in Spalten um — insbesondere das einzelne
  * `kategorie`-Feld ("keine" | `eigene:<id>`) in die Kategorie-Spalte (siehe
- * Tech Design). `kategorie_fest` wird seit dem Refine 2026-09-10 immer auf
- * null gesetzt — feste Kategorien gibt es im Formular nicht mehr, die Spalte
- * selbst entfällt erst mit der Migration in /backend.
+ * Tech Design).
  */
 function werteZuSpalten(values: AufgabeFormValues) {
   const datum = values.datum || null;
@@ -85,8 +79,7 @@ function werteZuSpalten(values: AufgabeFormValues) {
     zeittyp,
     start_zeit: istZeitslot ? values.startZeit : null,
     end_zeit: istZeitslot ? values.endZeit : null,
-    kategorie_fest: null,
-    eigene_kategorie_id: values.kategorie.startsWith("eigene:") ? values.kategorie.slice(7) : null,
+    kategorie_id: values.kategorie.startsWith("eigene:") ? values.kategorie.slice(7) : null,
     prioritaet: values.prioritaet,
     im_kalender: values.imKalender,
   };
@@ -232,6 +225,25 @@ export async function createEigeneKategorie(
 
     revalidatePath("/todos");
     return { kategorie: toEigeneKategorie(data) };
+  } catch {
+    return { error: CONNECTION_ERROR };
+  }
+}
+
+/**
+ * Löscht eine eigene Kategorie. Aufgaben, die dieser Kategorie zugeordnet
+ * waren, bleiben erhalten — die Zuordnung wird per "on delete set null"
+ * auf `aufgaben.kategorie_id` automatisch von der Datenbank entfernt, kein
+ * zusätzlicher Anwendungscode nötig (siehe Tech Design, Refine 2026-09-10).
+ */
+export async function deleteEigeneKategorie(id: string): Promise<{ error: string } | { success: true }> {
+  const supabase = await createClient();
+  try {
+    const { error } = await supabase.from("aufgaben_kategorien").delete().eq("id", id);
+    if (error) return { error: CONNECTION_ERROR };
+
+    revalidatePath("/todos");
+    return { success: true };
   } catch {
     return { error: CONNECTION_ERROR };
   }

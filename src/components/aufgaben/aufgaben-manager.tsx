@@ -27,6 +27,7 @@ import {
   createAufgabe,
   createEigeneKategorie,
   deleteAufgabe,
+  deleteEigeneKategorie,
   setAufgabeErledigt,
   updateAufgabe,
 } from "@/app/todos/actions";
@@ -91,14 +92,14 @@ export function AufgabenManager({ initialAufgaben, initialEigeneKategorien }: Au
     }
   }
 
-  // TODO(/backend): durch echte Server Action deleteEigeneKategorie(id) ersetzen —
-  // aktuell nur lokaler State (frontend-only Phase des Refine-Zyklus, siehe Tech Design).
   async function handleEigeneKategorieDelete(id: string): Promise<string | null> {
     try {
+      const result = await deleteEigeneKategorie(id);
+      if ("error" in result) return result.error;
       setEigeneKategorien((prev) => prev.filter((k) => k.id !== id));
-      setAufgaben((prev) =>
-        prev.map((a) => (a.eigeneKategorieId === id ? { ...a, eigeneKategorieId: null } : a))
-      );
+      // Der Server löscht die Zuordnung per "on delete set null" auf der DB-
+      // Ebene — hier nur der lokale State analog nachgezogen (kein Reload nötig).
+      setAufgaben((prev) => prev.map((a) => (a.kategorieId === id ? { ...a, kategorieId: null } : a)));
       return null;
     } catch {
       return CONNECTION_ERROR;

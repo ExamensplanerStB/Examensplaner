@@ -323,6 +323,22 @@ und über Geräte hinweg synchron.
 
 **Bekannte Umgebungslücke (nicht durch dieses Feature verursacht):** `npm test` schlägt weiterhin durchgängig mit `[vitest-pool-runner]: Timeout waiting for worker to respond` fehl — betrifft in diesem Lauf alle 16 Testdateien im Projekt (nicht nur die neuen), inklusive vollständig unveränderter, zuvor grüner Dateien. Die 17 neuen Integrationstests in `actions.test.ts` sind dadurch weiterhin nicht automatisiert verifizierbar, wurden aber sowohl manuell gegen die Implementierung durchgerechnet als auch durch den erfolgreichen Live-End-to-End-Test gegen die echte Datenbank funktional bestätigt.
 
+### Refine 2026-09-10: Feste Kategorien entfernt, Kategorie-Löschen (Backend-Teil)
+
+**Umgesetzt:**
+- Migration `supabase/migrations/20260910160000_aufgaben_kategorien_refine.sql`: `kategorie_fest`-Spalte auf `aufgaben` entfernt (per `drop column` — entfernt dabei automatisch auch ihren eigenen Check-Constraint sowie den Mutual-Exclusivity-Check `kategorie_fest is null or eigene_kategorie_id is null`, ohne dass die system-generierten Constraint-Namen geraten werden müssen); `eigene_kategorie_id` zu `kategorie_id` umbenannt (inkl. zugehörigem Index); neue DELETE-Policy auf `aufgaben_kategorien` (`auth.uid() = user_id`, identisches Muster wie SELECT/INSERT dort) — reversiert die ursprüngliche „kein Update/Delete"-Entscheidung. Vor dem Anwenden per `AskUserQuestion` explizit mit dem Nutzer abgestimmt (RLS-Änderung, siehe Projektregeln); live auf das verlinkte Supabase-Projekt angewendet (`supabase db push --linked`) und per direkter SQL-Abfrage verifiziert (Spaltenliste + `pg_policy`-Eintrag für die neue DELETE-Policy bestätigt)
+- `src/app/todos/actions.ts`: neue Server Action `deleteEigeneKategorie(id)` — identisches Muster wie `deleteAufgabe` (kein expliziter Auth-Check, RLS grenzt auf den Eigentümer ein), `CONNECTION_ERROR` bei Fehler, `revalidatePath("/todos")`. Kein zusätzlicher Code nötig, um die Zuordnung bei betroffenen Aufgaben zu entfernen — das übernimmt die bereits bestehende `on delete set null`-Fremdschlüssel-Regel auf `aufgaben.kategorie_id` automatisch auf DB-Ebene
+- Feldumbenennung `eigeneKategorieId` → `kategorieId` durchgezogen durch `src/lib/aufgaben.ts` (Typ + `kategorieVon()`), `aufgaben.test.ts`, `actions.ts` (Row-Mapping + `werteZuSpalten()`, `kategorie_fest`-Handling komplett entfernt statt nur auf `null` gesetzt), `page.tsx` (Row-Mapping + SELECT-String), `aufgabe-form.tsx` (`kategorieWertVon()`)
+- `src/components/aufgaben/aufgaben-manager.tsx`: `handleEigeneKategorieDelete` ruft jetzt die echte `deleteEigeneKategorie`-Server-Action auf (statt nur lokalem State aus der Frontend-Phase), zieht bei Erfolg den lokalen State nach (Kategorie aus der Liste entfernen, `kategorieId` bei betroffenen Aufgaben lokal auf `null` setzen) — identisches Prinzip wie bei allen anderen Mutationen in diesem Manager
+- `src/app/todos/actions.test.ts`: bestehende Tests an die neue Spalte `kategorie_id` angepasst, `fest:`-Testfall entfernt (ersetzt durch einen Test für den Zeittyp-Default „ganztag" ohne Zeitslot); 2 neue Tests für `deleteEigeneKategorie` (Erfolg, Verbindungsfehler) nach demselben Muster wie `deleteAufgabe`
+
+**Getestet:** `npm run build` fehlerfrei. `npm test` weiterhin durch die bereits dokumentierte Umgebungslücke blockiert (`[vitest-pool-runner]: Timeout waiting for worker to respond`, betrifft unverändert alle Testdateien). **Vollständiger Live-End-to-End-Test gegen das echte Supabase-Projekt** (Playwright, QA-Test-Account, nicht committed):
+- Neue Kategorie angelegt → **vollständiger Reload → weiterhin vorhanden** (echte Persistenz)
+- Kategorie gelöscht → Bestätigungsdialog mit korrektem Warnhinweistext → sofort aus der Liste verschwunden → **vollständiger Reload → weiterhin gelöscht** (echte DB-Persistenz des Löschens, nicht nur lokaler State)
+- **Kernverhalten gezielt verifiziert:** eigene Kategorie angelegt → einer neuen Aufgabe zugeordnet (Badge sichtbar) → Kategorie gelöscht → **nach vollständigem Reload:** Aufgabe weiterhin vorhanden, Badge verschwunden — bestätigt, dass die Fremdschlüssel-Regel „Zuordnung entfernen, Aufgabe bleibt" tatsächlich greift, nicht nur wie angenommen
+
+Im Rahmen der Verifikation angelegte Testkategorien/-aufgaben wurden über die echten Lösch-Flows der Anwendung wieder entfernt (inkl. der beiden aus der Frontend-Phase übrig gebliebenen „UITest-"-Kategorien, die vorher mangels Persistenz nicht wirklich löschbar waren).
+
 ## QA Test Results
 
 **Tested:** 2026-09-10

@@ -12,13 +12,7 @@ export const eigeneKategorieNameSchema = z
   .min(1, "Name ist erforderlich")
   .max(60, "Name darf maximal 60 Zeichen lang sein");
 
-/**
- * "kategorie" bildet einen einzigen Auswahlwert ab: "keine",
- * `fest:<KategorieFest>` oder `eigene:<id>` — löst die gegenseitige
- * Ausschließlichkeit von kategorieFest/eigeneKategorieId bereits auf
- * Formularebene, ohne zwei separate Felder synchron halten zu müssen
- * (siehe Tech Design, Technical Decisions).
- */
+/** "kategorie" bildet einen einzigen Auswahlwert ab: "keine" oder `eigene:<id>`. */
 export const aufgabeSchema = z
   .object({
     titel: titelSchema,

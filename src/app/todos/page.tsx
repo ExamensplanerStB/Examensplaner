@@ -18,7 +18,7 @@ export default async function TodosPage() {
     supabase
       .from("aufgaben")
       .select(
-        "id, titel, datum, zeittyp, start_zeit, end_zeit, kategorie_fest, eigene_kategorie_id, prioritaet, erledigt, im_kalender, created_at"
+        "id, titel, datum, zeittyp, start_zeit, end_zeit, kategorie_id, prioritaet, erledigt, im_kalender, created_at"
       )
       .order("created_at", { ascending: false }),
     supabase.from("aufgaben_kategorien").select("id, name, farbe").order("name"),
@@ -31,7 +31,7 @@ export default async function TodosPage() {
     zeittyp: row.zeittyp as Zeittyp | null,
     startZeit: kuerzeZeit(row.start_zeit),
     endZeit: kuerzeZeit(row.end_zeit),
-    eigeneKategorieId: row.eigene_kategorie_id,
+    kategorieId: row.kategorie_id,
     prioritaet: row.prioritaet as Prioritaet,
     erledigt: row.erledigt,
     imKalender: row.im_kalender,

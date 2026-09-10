@@ -1,6 +1,6 @@
 # PROJ-7: Wiederholungsplan
 
-## Status: Architected
+## Status: In Progress
 **Created:** 2026-09-10
 **Last Updated:** 2026-09-10
 
@@ -237,6 +237,29 @@ neue Infrastruktur.
 ### Dependencies
 - Keine neuen npm-Pakete nötig — alle benötigten shadcn/ui-Komponenten (Select, Badge, Button, Card, Skeleton) sind bereits aus PROJ-1–6 im Projekt installiert
 - Keine Supabase-Migration nötig — keine Schemaänderung, keine neuen Tabellen oder Policies
+
+## Frontend Implementation Notes (Frontend Developer)
+
+**Umgesetzt (2026-09-10):**
+- `src/lib/wiederholungsplan.ts`: reine Aggregationsfunktion `wiederholungsEintraegeVon()` — nimmt die bereits geladenen Domänenobjekte aus PROJ-3/4/5 entgegen (`Karteikarte[]`, `Uebungsaufgabe[]` + `UebungsaufgabeReview[]`, `Klausur[]` + `KlausurTeil[]`) und baut daraus eine vereinheitlichte, nach Fälligkeit aufsteigend sortierte `WiederholungsEintrag[]`-Liste (discriminated union über `art`). `gruppeVon()` berechnet die Dringlichkeits-Gruppe (Überfällig/Heute/Diese Woche/Später) über das bereits bestehende `diffTage`/`heuteISO` aus `karteikarten-intervall.ts` — keine neue Datumslogik. Nachschreiben-Fälligkeit wird über `naechsteFaelligkeit(klausur.datum, NACHSCHREIBEN_TAGE)` vorausschauend berechnet (echtes Datum, nicht nur ein Boolean wie `nachschreibenFaellig()` in PROJ-5)
+- `src/lib/wiederholungsplan.test.ts`: 14 Unit-Tests (Gruppen-Grenzfall bei genau 7 Tagen, Übungsaufgaben ohne offene Pflicht-Wiederholung werden ausgeschlossen, `nacharbeitEmpfohlen` bei `worst` ≤ 2, nachgeschriebene Klausuren werden ausgeschlossen, Fächer-Vereinigung über Teile, gemeinsame Sortierung über alle drei Arten hinweg) — alle grün
+- `src/components/wiederholungsplan/wiederholungs-eintrag-card.tsx`: rendert einen Eintrag abhängig von `art` (Typ-Badge/Fach/Themen/Frage bei Karteikarten, Fach/Themen/Titel/Nacharbeit-Hinweis bei Übungsaufgaben, Bezeichnung/Fach-Badges bei Probeklausuren), Ampel-Badge nach Dringlichkeits-Gruppe. Klick auf den Eintrag navigiert per `useRouter().push()` zum jeweiligen Hub **ohne** vorausgewählten Filter (siehe Architecture-Entscheidung im Decision Log). Bei Probeklausuren zusätzlich ein „Nachschreiben erledigt"-Button mit `event.stopPropagation()`, damit der Klick nicht zugleich navigiert
+- `src/components/wiederholungsplan/wiederholungsplan-manager.tsx`: Client-Komponente mit den drei Filtern (Art/Fach/Fälligkeit) und zwei Darstellungsmodi — gruppierte Standardansicht (3 Abschnitte, leere Gruppen werden ausgeblendet) und flache Liste (bei Einzel-Fälligkeitsfilter oder „Alle"). Unterscheidet die beiden Leer-Texte aus der Spec anhand eines `filtersAktiv`-Flags
+- `src/app/wiederholungsplan/page.tsx`: async Server Component, lädt **live** aus den bereits produktiven Supabase-Tabellen von PROJ-2/3/4/5 (`faecher`, `themen`, `karteikarten`+`karteikarten_themen`, `uebungsaufgaben`+`uebungsaufgaben_themen`+`uebungsaufgaben_reviews`, `klausuren`+`klausur_teile`+`klausur_teile_themen`) — bewusst **keine** Platzhalter-Arrays wie bei PROJ-3–6 in deren Frontend-Phase, da PROJ-7 keine eigene Tabelle hat und alle Quelldaten bereits live im Projekt existieren (siehe „Kein separates /backend nötig" unten)
+- `src/app/probeklausuren/actions.ts`: `markiereNachschreibenErledigt()` um einen zusätzlichen `revalidatePath("/wiederholungsplan")` neben dem bestehenden `revalidatePath("/probeklausuren")` ergänzt (wie im Tech Design vorgesehen) — einzige Änderung an einer bereits produktiven Datei, rein additiv
+
+**Zwei bewusste Präzisierungen gegenüber dem Spec-Wortlaut beim Umsetzen:**
+1. **Ampelfarbe folgt immer der tatsächlichen Dringlichkeits-Gruppe des Eintrags, auch in der flachen „Alle anzeigen"-Liste** — nicht wie die AC wörtlich nahelegt ein pauschales Neutral/Grün für alles außerhalb der drei Standard-Gruppen. Ein überfälliger Eintrag bleibt rot, auch wenn er über den Fälligkeits-Filter „Alle" sichtbar wird; nur echte „Später"-Einträge (> 7 Tage) sind neutral/grau. Grund: Ein pauschales Grün hätte die Dringlichkeits-Information gerade in der Ansicht verschleiert, in der sie am meisten zählt (mehr Einträge auf einen Blick). Die AC-Formulierung „Diese Woche und Alle anzeigen neutral/grün" wird dadurch für Diese-Woche-Einträge weiterhin erfüllt; für überfällige/heute-fällige Einträge, die zusätzlich über „Alle" sichtbar sind, correcter interpretiert.
+2. **`kurzerText()` wird hier zur sichtbaren Textkürzung verwendet** (140 Zeichen), nicht nur für `aria-label` wie in PROJ-3–5 — passend zur AC „Frage (gekürzt)"/kompakte Eintragsdarstellung, da der Plan im Gegensatz zu den Einzel-Hubs bewusst kompakt bleiben soll.
+
+**Kein separates `/backend` nötig:** Anders als PROJ-3–6 hat PROJ-7 keine eigene Tabelle — alle Datenquellen (Karteikarten, Übungsaufgaben, Probeklausuren) sind bereits vollständig produktiv aus PROJ-3/4/5. Die Seite lädt deshalb von Anfang an live, und die einzige Schreiboperation nutzt eine bereits bestehende, produktive Server Action. Die einzige rückwirkende Änderung an bestehendem Code ist die eine zusätzliche `revalidatePath`-Zeile oben, die bereits in dieser Sitzung erledigt wurde. Empfehlung: direkt zu `/qa` springen statt `/backend` separat auszuführen.
+
+**Getestet:**
+- `npm test`: 214/214 grün (14 neue Tests für `wiederholungsplan.ts`), `npm run build`: fehlerfrei, Route `/wiederholungsplan` korrekt als „ƒ Dynamic" gebaut (identisch zu den anderen Hubs)
+- **Umgebungshinweis (Wiederholung des bekannten Musters aus PROJ-4/PROJ-6):** Der erste `npm test`-Lauf dieser Sitzung schlug mit `[vitest-pool-runner]: Timeout waiting for worker to respond` fehl (8 von 17 Testdateien betroffen, u.a. die neue `wiederholungsplan.test.ts`). `rm -rf node_modules/.vite` hat das Problem wie schon in PROJ-4 dokumentiert vollständig behoben — danach lief die komplette Suite sauber durch. Die neue Testdatei wurde zusätzlich isoliert (`npx vitest run src/lib/wiederholungsplan.test.ts`) mit 14/14 grün verifiziert, bevor der volle Lauf bestätigt wurde
+- Per `curl` gegen den laufenden Dev-Server bestätigt: `/wiederholungsplan` ohne Session liefert `307` nach `/login?redirect=%2Fwiederholungsplan` (automatisch durch die bestehende Blocklist-Middleware aus PROJ-1 geschützt, `proxy.ts` musste nicht geändert werden). Regressionsspotcheck: `/karteikarten`, `/uebungsaufgaben`, `/probeklausuren`, `/todos`, `/dashboard` liefern weiterhin korrekt `307` → `/login`, `/login` selbst weiterhin `200`. Keine Server-Fehler im Dev-Log
+
+**Bewusst noch nicht möglich:** Kein authentifizierter Live-Durchklick im Browser (Golden Path: Filter wechseln, auf einen Karteikarten-/Übungsaufgaben-/Klausur-Eintrag klicken → landet im richtigen Hub, „Nachschreiben erledigt" klicken → Eintrag verschwindet, Persistenz nach Reload) — mir liegt in dieser Sitzung kein Test-Account/Passwort für das echte Supabase-Projekt vor (identische, bereits in PROJ-4s Frontend-Phase dokumentierte Grenze). Da alle Datenquellen aber bereits live angebunden sind (kein lokaler Platzhalter-State wie sonst zu Beginn), sollte ein Login-Test direkt reale Daten zeigen. Bitte einmal selbst gegenprüfen: `/wiederholungsplan` aufrufen → falls fällige Karteikarten/Übungsaufgaben/Probeklausuren-Nachschreiben aus den bestehenden Hubs vorhanden sind, sollten sie hier gruppiert erscheinen; Filter durchspielen; bei einer fälligen Nachschreiben-Erinnerung „Nachschreiben erledigt" klicken und prüfen, dass sie sowohl hier als auch unter `/probeklausuren` verschwindet.
 
 ## QA Test Results
 _To be added by /qa_

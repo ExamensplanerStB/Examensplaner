@@ -190,6 +190,10 @@ export async function markiereNachschreibenErledigt(
     if (error || !data) return { error: CONNECTION_ERROR };
 
     revalidatePath("/probeklausuren");
+    // Auch den Wiederholungsplan (PROJ-7) invalidieren, der dieselbe Aktion
+    // wiederverwendet — sonst zeigt ein erneuter Aufruf dort einen veralteten
+    // Stand, bis die Cache-Zeit abläuft.
+    revalidatePath("/wiederholungsplan");
     return { klausur: toKlausur(data) };
   } catch {
     return { error: CONNECTION_ERROR };

@@ -1,6 +1,6 @@
 # PROJ-6: Todo-Liste
 
-## Status: Planned
+## Status: Architected
 **Created:** 2026-09-09
 **Last Updated:** 2026-09-10
 
@@ -124,6 +124,9 @@
 | Gegenseitiger Ausschluss `kategorie_fest`/`eigene_kategorie_id` nur auf Anwendungsebene | Für Single-User-App ausreichend robust, analog anderer app-seitig durchgesetzter Regeln in PROJ-1–5 | 2026-09-09 |
 | Überfällig-Status und Datumsgruppen-Label live berechnet, nie gespeichert; Wiederverwendung von `diffTage`/`heuteISO` aus `karteikarten-intervall.ts` | Beide hängen vom aktuellen Datum ab und würden als gespeicherter Wert veralten; identisches Prinzip wie Nachschreiben-Fälligkeit in PROJ-5 | 2026-09-09 |
 | Server Actions statt eigener API-Routen | Konsistent mit dem bereits etablierten Muster in PROJ-1–5 | 2026-09-09 |
+| **Refine 2026-09-10:** `kategorie_fest`-Spalte und ihr Check-Constraint per Migration entfernt; `eigene_kategorie_id` umbenannt zu `kategorie_id` | Mit dem Wegfall fester Kategorien gibt es nur noch einen Kategorietyp — ein Feld statt zwei sich ausschließenden ist ehrlicher und einfacher | 2026-09-10 |
+| Löschen einer Kategorie nutzt die bereits bestehende Fremdschlüssel-Regel „Zuordnung entfernen, Aufgabe bleibt" — kein neuer Anwendungscode für das Kaskadierungsverhalten nötig, nur eine neue RLS-DELETE-Policy + Server Action | War beim ursprünglichen Tabellenbau bereits genau für diesen Fall vorgesehen (siehe PROJ-6-Backend-Notizen); vermeidet doppelte Absicherung des gleichen Verhaltens in Anwendungscode und Datenbank | 2026-09-10 |
+| Kategorie-Löschen als RLS-DELETE-Policy auf `aufgaben_kategorien` (`auth.uid() = user_id`), identisches Muster wie SELECT/INSERT dort | Konsistent mit dem in PROJ-1–5 etablierten flachen RLS-Muster, kein Sonderfall nötig | 2026-09-10 |
 
 ---
 <!-- Sections below are added by subsequent skills -->
@@ -159,16 +162,24 @@
     ├── Neue/Bearbeiten-Aufgabe-Formular (Modal)
     │   ├── Titel (Textfeld, Pflicht, max. 200 Zeichen)
     │   ├── Datum (optionales Datumsfeld)
-    │   ├── Kategorie (Auswahl: 4 feste Kategorien + eigene Kategorien +
-    │   │   "Eigene Kategorie anlegen" → Inline-Formular mit Namensfeld und
-    │   │   Farbauswahl aus fester Palette)
+    │   ├── Kategorie (Auswahl: ausschließlich eigene Kategorien, keine
+    │   │   festen mehr — siehe Refine 2026-09-10 im Decision Log)
+    │   │   + "Eigene Kategorie anlegen" → Inline-Panel mit:
+    │   │       ├── Liste aller bereits angelegten eigenen Kategorien,
+    │   │       │   je mit Löschen-Icon
+    │   │       └── Namensfeld + Farbauswahl aus fester Palette, zum
+    │   │           Anlegen einer neuen Kategorie
     │   ├── Priorität (Button-Gruppe: Hoch/Mittel/Niedrig/Keine)
     │   ├── "Im Kalender anzeigen"-Schalter (Standard: an)
     │   ├── Zeittyp (Ganztägig/Zeitslot) — erst wähl-/sichtbar, sobald ein
     │   │   Datum gesetzt ist
     │   └── Start-/Endzeit (nur bei Zeittyp "Zeitslot")
     │
-    ├── Lösch-Bestätigungsdialog (Abbrechen / Löschen)
+    ├── Lösch-Bestätigungsdialog (Abbrechen / Löschen) — für Aufgaben
+    │
+    ├── Kategorie-Lösch-Bestätigungsdialog (Abbrechen / Löschen) — eigene
+    │   Instanz innerhalb des Kategorie-Panels, mit Hinweis, dass
+    │   zugeordnete Aufgaben erhalten bleiben und nur die Zuordnung entfällt
     │
     └── Lade-/Fehlerzustände (Skeleton beim initialen Laden, "Verbindung
         fehlgeschlagen"-Hinweis bei Netzwerkfehlern)
@@ -176,13 +187,10 @@
 
 ### Data Model (in plain language)
 ```
-Feste Kategorien und Priorität sind Wertelisten im Anwendungscode (keine
-eigene Tabelle) — analog zu Bewertungstypen wie "Fachlich"/"Klausurtechnik"
-in PROJ-3/4. Das hält Bezeichnung und Farbe an einer Stelle im Design-System
-gepflegt, statt sie zusätzlich in der Datenbank zu duplizieren:
-- Kategorie (fest): Vorlesung/Seminar, Lernsession, Wiederholung,
-  Frist/Prüfung — Farben identisch zu den Kalender-Kategorien-Tokens im
-  Design-System
+Update 2026-09-10 (Refine): Feste Kategorien entfallen vollständig — es
+gibt nur noch eigene, vom Nutzer angelegte Kategorien. Priorität bleibt
+unverändert eine Werteliste im Anwendungscode (keine eigene Tabelle) —
+analog zu Bewertungstypen wie "Fachlich"/"Klausurtechnik" in PROJ-3/4:
 - Priorität: Hoch, Mittel, Niedrig, Keine (Standard) — Farben identisch zum
   bestehenden Ampelsystem
 
@@ -196,12 +204,17 @@ Tabelle "aufgaben" (eine Zeile pro Todo-Eintrag):
                         Datum vorhanden ist; sonst leer
 - start_zeit / end_zeit → nur gesetzt, wenn zeittyp "zeitslot" ist; end_zeit
                         muss nach start_zeit liegen
-- kategorie_fest     → einer von Vorlesung/Seminar, Lernsession,
-                        Wiederholung, Frist/Prüfung, oder leer
-- eigene_kategorie_id → verweist optional auf "aufgaben_kategorien" (siehe
-                        unten); höchstens eines von kategorie_fest/
-                        eigene_kategorie_id ist gleichzeitig gesetzt, nie
-                        beide
+- kategorie_id       → verweist optional auf "aufgaben_kategorien" (siehe
+                        unten); wird automatisch geleert (nicht die Aufgabe
+                        gelöscht), sobald die referenzierte Kategorie
+                        gelöscht wird — dieses Verhalten war bereits beim
+                        ursprünglichen Bau so angelegt (vorausschauend für
+                        genau diesen Fall) und muss nicht neu gebaut werden
+                        (Update 2026-09-10: vormals zwei getrennte, sich
+                        ausschließende Felder `kategorie_fest`/
+                        `eigene_kategorie_id` — durch den Wegfall der festen
+                        Kategorien jetzt ein einziges Feld, umbenannt zu
+                        `kategorie_id`)
 - prioritaet         → Hoch/Mittel/Niedrig/Keine, Standard "Keine"
 - erledigt           → true/false, Standard false
 - im_kalender        → true/false, Standard true (Datenfeld für PROJ-9,
@@ -217,6 +230,9 @@ Tabelle "aufgaben_kategorien" (eigene, vom Nutzer angelegte Kategorien):
                         (kein freier Farbwähler), analog zur Farbauswahl im
                         HTML-Prototyp
 - created_at
+- Update 2026-09-10: Löschen jetzt möglich (vorher nur Lesen/Anlegen) — der
+  Nutzer darf ausschließlich seine eigenen Kategorien löschen, identisches
+  RLS-Muster wie Lesen/Anlegen
 
 Folgende Werte sind nicht gespeichert, sondern werden bei jedem Laden live
 berechnet (identisches Prinzip wie die zeitabhängigen Badges in PROJ-3/4/5 —
@@ -235,15 +251,16 @@ und über Geräte hinweg synchron.
 ```
 
 ### Tech Decisions (Reasoning)
-- **Feste Kategorien und Priorität als Wertelisten im Code, nicht als Datenbank-Tabelle:** Es gibt keinen Bedarf, sie zur Laufzeit zu ändern; Bezeichnung und Farbe bleiben so an einer Stelle im Design-System gepflegt (analog zu den Bewertungstypen in PROJ-3/4), statt eine zusätzliche Tabelle nur für vier feste Zeilen zu pflegen.
-- **Eigene Kategorien als separate, flache Tabelle statt einer gemeinsamen Tabelle mit den festen Kategorien:** Vermeidet eine Migration mit Seed-Daten nur für vier feste Zeilen (wie bei "faecher" in PROJ-2) und hält die Unterscheidung "fest vs. eigen" eindeutig über zwei getrennte, sich gegenseitig ausschließende Felder auf "aufgaben" ab, statt einer Tabelle mit gemischtem Ursprung.
+- **Priorität weiterhin als Werteliste im Code, nicht als Datenbank-Tabelle:** Es gibt keinen Bedarf, sie zur Laufzeit zu ändern; Bezeichnung und Farbe bleiben so an einer Stelle im Design-System gepflegt (analog zu den Bewertungstypen in PROJ-3/4).
+- **Update 2026-09-10 — `kategorie_fest` entfällt vollständig, `eigene_kategorie_id` wird zu `kategorie_id` umbenannt:** Mit dem Wegfall der festen Kategorien gibt es nur noch einen Kategorietyp — ein einzelnes Feld ist ehrlicher als zwei Felder, deren gegenseitiger Ausschluss ohnehin nur auf Anwendungsebene durchgesetzt wurde (siehe ursprüngliche Entscheidung unten). Migration entfernt Spalte + zugehörigen Check-Constraint, statt die Altlast stehen zu lassen.
+- **Update 2026-09-10 — Löschen eigener Kategorien: kaskadiertes Entfernen der Zuordnung statt Löschen der Aufgabe, per Fremdschlüssel-Verhalten (nicht per Anwendungscode):** Die Fremdschlüssel-Beziehung wurde beim ursprünglichen Bau bereits mit „Zuordnung entfernen, nicht die Aufgabe" angelegt (siehe „ON DELETE SET NULL"-Verhalten oben) — eine bewusste Vorausplanung für genau diesen später eingetretenen Fall. Die Löschfunktion selbst (RLS-Policy + Server Action) ist neu, das Kaskadierungsverhalten war es nicht.
+- **Eigene Kategorien weiterhin als separate, flache Tabelle:** Bereits etabliertes, einfaches Muster — RLS direkt über `user_id`, wie bei allen anderen Nutzer-eigenen Daten in PROJ-1–5.
 - **Route `/todos`, Tabellenname `aufgaben`:** Die Route folgt dem im Prototyp und in INDEX.md verwendeten Feature-Namen "Todo-Liste"; der Tabellenname folgt der sonst durchgängig deutschen Benennung in der Datenbank (`karteikarten`, `klausuren`, `themen`, `faecher`). Dieselbe Diskrepanz zwischen Routen- und Tabellenname existiert bereits bei PROJ-5 (`/probeklausuren` → Tabelle `klausuren`).
 - **Eigene Kategorie-Farbe aus fester Palette statt freiem Farbwähler:** Verhindert unleserliche oder mit dem Design-System kollidierende Farben, deutlich einfacher umzusetzen — identisches Prinzip zur Farbauswahl im HTML-Prototyp.
 - **DB-seitiger Check-Constraint für `end_zeit > start_zeit`:** Verteidigung in der Tiefe zusätzlich zur Zod-Validierung — identisches Prinzip wie der Punkte-Check (`erreichte ≤ max`) in PROJ-5.
-- **Gegenseitiger Ausschluss von `kategorie_fest`/`eigene_kategorie_id` auf Anwendungsebene (Zod + UI) durchgesetzt, nicht als Datenbank-Constraint:** einfacher umzusetzen, für eine Single-User-App ausreichend robust — analog dazu, wie auch andere Geschäftsregeln in PROJ-1–5 nicht als DB-Constraints, sondern in der Anwendungslogik durchgesetzt werden.
 - **Überfällig-Status und Datumsgruppen-Label werden bei jedem Laden live berechnet, nie gespeichert:** identisches Prinzip wie die Nachschreiben-Fälligkeit/Status-Badges in PROJ-3/4/5, da beide vom aktuellen Datum abhängen und als gespeicherter Wert sofort veralten würden. Nutzt dafür die bereits vorhandenen Funktionen `diffTage`/`heuteISO` aus `karteikarten-intervall.ts` statt sie zu duplizieren (siehe bereits in PROJ-5 angewandtes Muster).
 - **Keine Verknüpfung zu "faecher"/"themen" (PROJ-2):** deckt sich mit der in der Spezifikation begründeten Out-of-Scope-Entscheidung — Todos sind nicht Teil der Kompetenzanalyse.
-- **Server Actions statt eigener API-Routen, RLS-Muster 1:1 aus PROJ-1–5:** konsistent mit dem bereits abgenommenen Muster im gesamten Projekt.
+- **Server Actions statt eigener API-Routen, RLS-Muster 1:1 aus PROJ-1–5:** konsistent mit dem bereits abgenommenen Muster im gesamten Projekt. Die neue Löschfunktion für Kategorien folgt exakt demselben Muster (`deleteEigeneKategorie`-Action + RLS-DELETE-Policy `auth.uid() = user_id`).
 
 ### Dependencies
 - Keine neuen npm-Pakete nötig — react-hook-form, Zod und alle benötigten shadcn/ui-Komponenten (Select, Input, Dialog, AlertDialog, Switch, Checkbox, Badge) sind bereits aus PROJ-1–5 im Projekt installiert

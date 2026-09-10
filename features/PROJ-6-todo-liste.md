@@ -1,6 +1,6 @@
 # PROJ-6: Todo-Liste
 
-## Status: Approved
+## Status: Deployed
 **Created:** 2026-09-09
 **Last Updated:** 2026-09-10
 
@@ -419,4 +419,24 @@ Nach dem Fix in `aufgabe-form.tsx` (siehe BUG-1 und Frontend Implementation Note
 - **Recommendation:** Deploy. Firefox blieb wegen einer defekten lokalen Playwright-Installation in dieser Sandbox ungetestet (siehe oben) — kein PROJ-6-spezifisches Risiko, da Chromium und WebKit (Safari-Engine) beide sauber sind; bei Gelegenheit extern nachholen
 
 ## Deployment
-_To be added by /deploy_
+
+**Produktions-URL:** https://examensplaner-v2fg.vercel.app/todos
+**Deployed:** 2026-09-10
+**Git-Tag:** `v1.3.0-PROJ-6`
+
+**Pre-Deployment-Checks:** `npm run build` fehlerfrei, Migration `20260910090000_create_aufgaben.sql` bereits während `/backend` live auf das Supabase-Projekt angewendet, keine neuen Env-Variablen nötig (nutzt dieselbe Supabase-Verbindung wie PROJ-1–5, kein `process.env`-Zugriff in eigenem PROJ-6-Code), keine Secrets in den committeten Diffs (geprüft). `npm run lint` weiterhin durch die bereits in PROJ-1 dokumentierte Tooling-Lücke blockiert (`TypeError: Converting circular structure to JSON` in der ESLint-Konfiguration selbst) — unverändert vorbestehend, kein PROJ-6-Bezug.
+
+**Deployment-Ablauf:** Kein Erstdeployment — Vercel-Projekt und Auto-Deploy-on-Push bestehen bereits seit PROJ-1. Push auf `main` (7 Commits: Spec, Tech Design, Frontend, Backend, QA, Bugfix, Re-QA) hat den Auto-Deploy zuverlässig ausgelöst.
+
+**Post-Deployment-Verifikation:** Live gegen die Produktions-URL getestet (dediziertes, danach wieder aufgeräumtes Playwright-Skript, Zugangsdaten nur als Umgebungsvariable, nicht committed):
+- Nicht eingeloggter Zugriff auf `/todos` → korrekt zu `/login?redirect=%2Ftodos` umgeleitet
+- Login mit dem QA-Test-Account → landet korrekt auf `/todos`
+- Seite rendert die echte Todo-Liste-Oberfläche (nicht nur eine leere/alte Seite — bestätigt, dass das neue Deployment tatsächlich live ist)
+- Aufgabe angelegt → **nach Page-Reload gegen die echte Produktions-Datenbank weiterhin sichtbar** (echte Persistenz, nicht nur der vorherige lokale/Dev-Stand)
+- Aufgabe wieder gelöscht → per Nachprüfung bestätigt: 0 Test-Aufgaben im Konto verblieben
+- Keine Konsolen-/Page-Errors während des gesamten Durchlaufs
+- `/karteikarten`, `/uebungsaufgaben`, `/probeklausuren`, `/themen`, `/dashboard` weiterhin über dieselbe Middleware korrekt geschützt (Security-Headers unverändert aus PROJ-1)
+
+**Production-Ready Essentials:** Bereits projektweit aus PROJ-1 vorhanden (Security-Headers, Vercel-eigenes Monitoring) — keine PROJ-6-spezifischen Ergänzungen nötig.
+
+**Bekannte, vorbestehende Einschränkungen (nicht PROJ-6-spezifisch, unverändert seit früheren Deployments):** `npm test` durch die Vitest-Worker-Pool-Umgebungslücke in dieser Sandbox blockiert; `npm run lint` durch einen ESLint-Konfigurationsfehler blockiert. Beide betreffen das gesamte Projekt, nicht nur PROJ-6, und wurden durch umfangreiche Live-Tests gegen echte Dev- und Produktionsumgebungen kompensiert (siehe QA Test Results und Post-Deployment-Verifikation oben).

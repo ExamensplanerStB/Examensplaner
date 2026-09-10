@@ -262,7 +262,131 @@ neue Infrastruktur.
 **Bewusst noch nicht möglich:** Kein authentifizierter Live-Durchklick im Browser (Golden Path: Filter wechseln, auf einen Karteikarten-/Übungsaufgaben-/Klausur-Eintrag klicken → landet im richtigen Hub, „Nachschreiben erledigt" klicken → Eintrag verschwindet, Persistenz nach Reload) — mir liegt in dieser Sitzung kein Test-Account/Passwort für das echte Supabase-Projekt vor (identische, bereits in PROJ-4s Frontend-Phase dokumentierte Grenze). Da alle Datenquellen aber bereits live angebunden sind (kein lokaler Platzhalter-State wie sonst zu Beginn), sollte ein Login-Test direkt reale Daten zeigen. Bitte einmal selbst gegenprüfen: `/wiederholungsplan` aufrufen → falls fällige Karteikarten/Übungsaufgaben/Probeklausuren-Nachschreiben aus den bestehenden Hubs vorhanden sind, sollten sie hier gruppiert erscheinen; Filter durchspielen; bei einer fälligen Nachschreiben-Erinnerung „Nachschreiben erledigt" klicken und prüfen, dass sie sowohl hier als auch unter `/probeklausuren` verschwindet.
 
 ## QA Test Results
-_To be added by /qa_
+
+**Tested:** 2026-09-10
+**App URL:** http://localhost:3000 (Dev-Server, gegen das echte verlinkte Supabase-Projekt)
+**Tester:** QA Engineer (AI)
+**Browser:** Chromium (Playwright, headless) für den authentifizierten Golden Path inkl. Responsive-Viewports (375/768/1440px); zusätzlich Chromium + Mobile Safari für die committete, unauthentifizierte E2E-Suite
+**Test-Account:** dedizierter QA-Test-Account (`trashkrause@aol.com`, vom Nutzer für diese Session bereitgestellt, wie schon in PROJ-1–6) — Zugangsdaten nur als Umgebungsvariable verwendet, nie committed
+
+**Vorgehen:** Da PROJ-7 keine eigene Tabelle hat und bereits im Frontend live an Supabase angebunden ist (siehe Frontend Implementation Notes), wurde der komplette authentifizierte Funktionsumfang in dieser QA-Runde erstmals live durchgespielt — inkl. gezielt konstruierter Testdaten für alle vier Dringlichkeits-Gruppen. Ein automatisiertes Playwright-Treiberskript (lokal, nicht committed, da mit echten Test-Zugangsdaten) hat fünf Test-Probeklausuren mit präzise berechneten Daten angelegt (Klausurdatum − 80/75/72/68/60 Tage, um Überfällig/Heute/Diese-Woche/Grenzfall-7-Tage/Später gezielt zu treffen), dazu eine Test-Karteikarte und eine Test-Übungsaufgabe (bewertet mit `worst=2`, um „Nacharbeit empfohlen" auszulösen). Alle Testdaten wurden danach vollständig aus der Live-Datenbank entfernt (verifiziert: 0 verbliebene `QA7-*`-Einträge in allen drei Hubs sowie im Themenkatalog).
+
+### Acceptance Criteria Status
+
+#### Zugriff & Grundgerüst
+- [x] Nicht eingeloggter Zugriff auf `/wiederholungsplan` → Redirect zu `/login?redirect=%2Fwiederholungsplan` (live verifiziert + E2E-Test)
+- [x] Eingeloggt → eigene Daten geladen, drei Standard-Gruppen angezeigt (live verifiziert, Screenshot: Überfällig (3) / Heute fällig (1) / Diese Woche (4))
+- [x] Keine Einträge in den drei Standard-Gruppen → „Keine fälligen oder geplanten Wiederholungen" (Code-Review: identischer Zweig wie die live verifizierte „Keine Wiederholungen für diese Auswahl"-Variante, nur mit `filtersAktiv=false`)
+
+#### Aggregation & Gruppierung
+- [x] Karteikarte mit `wdh_datum` in der Vergangenheit → „Überfällig" (live: bestehende reale Karteikarten des Accounts erscheinen korrekt dort)
+- [x] Karteikarte mit `wdh_datum` = heute → „Heute fällig" (Unit-Test-Grenzfall `differenz===0`; identische Funktion `gruppeVon()` live über Klausur B bestätigt)
+- [x] Karteikarte mit `wdh_datum` in den nächsten 7 Tagen → „Diese Woche" (live: neu angelegte Test-Karteikarte erscheint dort)
+- [x] Karteikarte mit `wdh_datum` > 7 Tage → nur in „Alle anzeigen" (Unit-Test + live über Klausur D/„Später" bestätigt, identische `gruppeVon()`-Logik)
+- [x] Übungsaufgabe „Wiederholung fällig" → gleiche Gruppen-Logik (live: Test-Aufgabe mit `worst=2` → Pflicht-Wdh. in 5 Tagen → korrekt „Diese Woche")
+- [x] Übungsaufgabe ohne offenes `pflicht_wdh_datum` → nirgends im Plan (Code-Review: `continue`-Statement in `wiederholungsEintraegeVon()`)
+- [x] Probeklausur < 75 Tage alt, Nachschreiben-Datum in den nächsten 7 Tagen → vorausschauend „Diese Woche", obwohl der Hub-eigene Hinweis noch nicht sichtbar ist (live gezielt verifiziert: Klausur C, 72 Tage — erscheint im Plan unter „Diese Woche", zeigt aber in `/probeklausuren` selbst noch **keinen** Nachschreiben-Hinweis — exakt die spezifizierte Vorausschau-Eigenschaft)
+- [x] Probeklausur-Fälligkeitsdatum erreicht/überschritten, nicht nachgeschrieben → „Heute fällig"/„Überfällig" (live: Klausur A → Überfällig, Klausur B → Heute fällig, beide zeigen zusätzlich korrekt den Hub-eigenen Hinweis)
+- [x] Probeklausur bereits nachgeschrieben → nirgends im Plan (live: nach Klick auf „Nachschreiben erledigt" verschwindet der Eintrag sofort)
+- [x] Fälligkeits-Filter „Alle" → zusätzlich alle künftigen Einträge als flache Liste (live: Klausur D erscheint erst nach Umschalten auf „Alle (auch Zukunft)")
+
+#### Darstellung je Eintrag
+- [x] Karteikarte: Typ-Badge, Fach, Themen-Chips, Frage (gekürzt), Fälligkeitsdatum (live verifiziert, Screenshot)
+- [x] Übungsaufgabe: Fach, Themen-Chips, Titel, Fälligkeitsdatum, „Erst Nacharbeit empfohlen"-Hinweis bei `worst` ≤ 2 (live verifiziert)
+- [x] Probeklausur: Bezeichnung, Fach-Badges (Vereinigung der Teile-Fächer), Nachschreiben-Fälligkeitsdatum (live verifiziert)
+- [x] Ampelfarben Rot/Amber/Grün je Gruppe (live verifiziert) — **mit der bereits in den Frontend Implementation Notes dokumentierten Präzisierung:** die Farbe folgt immer der tatsächlichen Dringlichkeits-Gruppe des Eintrags, auch in der „Alle anzeigen"-Liste (ein überfälliger Eintrag bleibt dort rot statt pauschal grün) — bewusste, sinnvollere Auslegung der AC, kein Bug
+
+#### Verlinkung & Aktionen
+- [x] Klick auf Karteikarten-Eintrag → Navigation zum Karteikarten-Hub, kein vorausgewählter Filter (live verifiziert)
+- [x] Klick auf Übungsaufgaben-Eintrag → Navigation zum Übungsaufgaben-Hub (live verifiziert)
+- [x] Klick auf Probeklausur-Eintrag (außerhalb des Buttons) → Navigation zum Probeklausuren-Hub (live verifiziert)
+- [x] Klick auf „Nachschreiben erledigt" → Klausur markiert, Eintrag verschwindet sofort aus dem Plan, Änderung persistiert und ist auch in `/probeklausuren` sichtbar (live end-to-end verifiziert, inkl. Seitenwechsel)
+
+#### Filter
+- [x] Art-Filter (Alle/Karteikarten/Übungsaufgaben/Probeklausuren) filtert korrekt (live verifiziert)
+- [x] Fach-Filter filtert korrekt (live für Karteikarten-Fach verifiziert; Klausur-„mind. ein Teil passt"-Logik zusätzlich per Unit-Test von `faecherVon()` sowie Code-Review abgedeckt)
+- [x] Fälligkeits-Filter mit Einzelkategorie zeigt ausschließlich diese Kategorie (live: „Nur Überfällig" zeigte korrekt nur Klausur A)
+- [x] Leere Filterkombination → „Keine Wiederholungen für diese Auswahl" (live verifiziert — der erste Testlauf mit einer zufällig ungünstig gewählten Filterkombination traf unerwartet eine echte, bereits im Account vorhandene fällige Karteikarte und war dadurch nicht leer; mit einer tatsächlich leeren Kombination bestätigt)
+
+#### Fehler & Sicherheit
+- [ ] **BUG-1:** Verbindung schlägt beim Laden des Plans fehl → **nicht erfüllt**, siehe Bugs Found
+- [x] Verbindung schlägt bei „Nachschreiben erledigt" fehl → Fehlermeldung erscheint, Eintrag bleibt sichtbar, Button bleibt bedienbar (live verifiziert per Netzwerk-Interception, POST auf `/wiederholungsplan` abgebrochen)
+- [x] RLS verweigert Zugriff ohne gültige Session (Code-Review: keine neue Tabelle, identische, bereits in PROJ-3/4/5 geprüfte Policies; kein Live-Multi-Account-Test — bewusste, bereits in PROJ-1–6 akzeptierte Grenze für diese Single-User-App)
+
+### Edge Cases Status
+
+#### EC-1: Keine Daten in einem/mehreren Hubs
+- [x] Identischer Codepfad wie AC „Zugriff & Grundgerüst" (Code-Review)
+
+#### EC-2: Übungsaufgabe „Geschlossen"
+- [x] Erscheint nie im Plan (Code-Review: `pflicht_wdh_datum` ist in diesem Zustand `null`, dadurch `continue`)
+
+#### EC-3: Klausur mit mehreren Fächern, Fach-Filter
+- [x] Matched bei mindestens einem passenden Teil (Unit-Test `faecherVon()`, Wiederverwendung der bereits in PROJ-5 geprüften Funktion)
+
+#### EC-4: Karteikarte weit in der Zukunft
+- [x] Nur in „Alle anzeigen" sichtbar (Unit-Test + analoges Live-Verhalten über Klausur D)
+
+#### EC-5: Grenzfall genau 7 Tage
+- [x] Zählt noch zu „Diese Woche" — **gezielt live verifiziert** (Klausur E, Fälligkeit exakt heute+7) zusätzlich zum bereits bestehenden Unit-Test
+
+#### EC-6: Zwei Tabs, gleichzeitige Bearbeitung
+- [ ] NICHT SEPARAT LIVE GETESTET — bewusst kein Konflikt-Handling (Single-User-Konvention wie PROJ-1–6), akzeptierte Grenze
+
+#### EC-7: Standard-Gruppen leer, „Alle anzeigen" liefert dennoch Treffer
+- [x] Standardansicht zeigt trotzdem den leeren Zustand (identischer Codepfad wie AC „Fälligkeits-Filter Alle", Code-Review)
+
+#### EC-8: Sehr lange Texte
+- [x] Werden gekürzt (`kurzerText()`, live am XSS-Testtext beobachtet — zusätzlich zur Kürzung wurden auch die spitzen Klammern entfernt)
+
+### Security Audit Results
+- [x] Authentication: `/wiederholungsplan` ohne Session konsequent verweigert (live + E2E, kein Opt-out über Query-Strings)
+- [x] Authorization (RLS): keine neue Tabelle, ausschließlich Wiederverwendung bereits geprüfter PROJ-2/3/4/5-Policies
+- [x] Input-Validierung/XSS: `<img src=x onerror="...">`-Payload in einer Karteikarten-Frage live angelegt — Payload wurde weder beim Anlegen noch bei der Anzeige im Wiederholungsplan ausgeführt (React-Escaping **plus** zusätzliche `<>`-Entfernung durch `kurzerText()` als Verteidigung in der Tiefe)
+- [x] Keine Secrets im Code; Test-Zugangsdaten wurden nur temporär als Umgebungsvariable verwendet, nie committed
+- [x] Rate-Limiting: bewusst nicht implementiert (projektweite Entscheidung aus PROJ-1)
+- [ ] **BUG-2:** Tastatur-Erreichbarkeit — siehe Bugs Found
+
+### Bugs Found
+
+#### BUG-1: Fehlerbehandlung beim initialen Laden des Plans fehlt vollständig
+- **Severity:** Medium
+- **Betroffene Datei:** `src/app/wiederholungsplan/page.tsx`
+- **Steps to Reproduce:**
+  1. Die Server Component lädt alle zehn Supabase-Queries per `Promise.all` und destrukturiert dabei ausschließlich `{ data: ... }` — das ebenfalls zurückgegebene `error`-Feld wird nirgends geprüft
+  2. Jede Query fällt bei einem Fehler auf `(x ?? [])` zurück, wird also identisch zu „Tabelle ist leer" behandelt
+  3. Erwartet laut AC: bei einem Verbindungsfehler erscheint „Verbindung fehlgeschlagen, bitte später erneut versuchen" statt eines (ggf. teilweise) geladenen Plans
+  4. Tatsächlich: Schlagen eine oder mehrere Queries fehl (z.B. bei einem kurzen Netzwerk-Aussetzer zwischen Next.js-Server und Supabase), zeigt die Seite einfach weniger bzw. im Extremfall gar keine Einträge — inklusive des irreführenden Zustands „Keine fälligen oder geplanten Wiederholungen", obwohl in Wahrheit nur das Laden fehlgeschlagen ist
+- **Root Cause:** Kein `try/catch` und keine `error`-Prüfung um die zehn Supabase-Aufrufe, anders als bei den Server Actions der Hubs (die für Mutationen konsequent `CONNECTION_ERROR` zurückgeben)
+- **Impact:** Kein Datenverlust, keine Sicherheitslücke, per Neuladen der Seite selbstheilend — aber gerade in einer Prüfungsvorbereitungs-App könnte ein Nutzer bei einem kurzen Verbindungsaussetzer fälschlich glauben, nichts sei fällig, und eine dringende Wiederholung verpassen
+- **Priority:** Fix before deployment (Empfehlung) — Entscheidung liegt beim Nutzer, da nicht blockierend (kein Critical/High)
+
+#### BUG-2: Karteikarten-/Übungsaufgaben-Einträge sind nicht per Tastatur navigierbar
+- **Severity:** Medium
+- **Betroffene Datei:** `src/components/wiederholungsplan/wiederholungs-eintrag-card.tsx`
+- **Steps to Reproduce:**
+  1. `/wiederholungsplan` ausschließlich mit der Tastatur bedienen (Tab-Taste)
+  2. Für einen Karteikarten- oder Übungsaufgaben-Eintrag gibt es kein fokussierbares Element, das die Navigation zum jeweiligen Hub auslöst — die gesamte Card ist ein reines `<div onClick=...>` ohne `role="button"`, `tabIndex` oder Keydown-Handler
+  3. Erwartet: Tastatur-/Screenreader-Nutzer können jede interaktive Funktion erreichen (WCAG 2.1 AA, siehe auch Projekt-Vorgabe „Use semantic HTML and ARIA labels for accessibility" in `.claude/rules/frontend.md`)
+  4. Tatsächlich: Für Karteikarten-/Übungsaufgaben-Einträge (2 von 3 Arten) ist die einzige Aktion des Eintrags rein maus-/touch-bedienbar. Bei Probeklausur-Einträgen ist wenigstens der „Nachschreiben erledigt"-Button per Tastatur bedienbar, die Navigation zum Hub selbst aber ebenso nicht
+- **Root Cause:** Bewusste Umsetzung als klickbarer `<div>` (analog zum bereits bestehenden, ebenfalls nicht tastaturzugänglichen Muster für die klickbare Frage/den Titel in den Hub-Cards aus PROJ-3/4/5) — hier aber ohne die dort zusätzlich vorhandenen, separat fokussierbaren Bearbeiten-/Löschen-Icons als Alternative, wodurch die gesamte Karte für Tastaturnutzer funktionslos wird
+- **Impact:** Kein Datenverlust, keine Sicherheitslücke — aber ein vollständiger Funktionsausfall der Kernaktion („zum Hub wechseln") für Tastatur-/Assistive-Technology-Nutzer bei 2 von 3 Eintragsarten
+- **Priority:** Fix before deployment (Empfehlung) — Entscheidung liegt beim Nutzer, da nicht blockierend (kein Critical/High)
+
+### Automatisierte Tests
+- **Unit-Tests (Vitest):** `npm test` — 214/214 grün (14 Tests für `wiederholungsplan.ts`, Rest bestehende Suite unverändert, keine Regression)
+- **Build:** `npm run build` — fehlerfrei, Route `/wiederholungsplan` korrekt als „ƒ Dynamic" gebaut
+- **E2E-Tests (Playwright):** `tests/PROJ-7-wiederholungsplan.spec.ts` neu erstellt (2 Tests: nicht eingeloggter Redirect, kein Query-String-Opt-out) — `npm run test:e2e`: 26/26 grün (24 bestehende + 2 neue), über Chromium + Mobile Safari. Bewusst nicht in die committete Suite aufgenommen: die authentifizierten Abläufe (Aggregation, Gruppierung/Grenzfälle, Filter, Navigation, „Nachschreiben erledigt" inkl. Fehlerfall, XSS), da dafür echte Zugangsdaten nötig wären — diese wurden stattdessen live während dieser QA-Session mit einem eigens dafür angelegten, danach vollständig wieder entfernten Testdatensatz verifiziert (siehe oben)
+- **Live-Test:** Ein automatisiertes, lokal ausgeführtes Playwright-Treiberskript (nicht committed, da mit echten Test-Zugangsdaten) gegen das echte Supabase-Projekt — 39/41 Prüfungen im ersten Durchlauf grün; die 2 abweichenden Prüfungen waren beide Fehler im Testskript selbst (ein zu naiver Text-Reihenfolge-Check, der versehentlich Text aus dem Fälligkeits-Filter-Dropdown mit einbezog, sowie eine Filterkombination, die unabsichtlich einen echten, bereits vorhandenen fälligen Datensatz traf) — beide per gezieltem Nachtest und Screenshot als korrektes App-Verhalten bestätigt. Alle Testdaten (5 Probeklausuren, 1 Karteikarte, 1 Übungsaufgabe, 1 Thema) vollständig aus der Live-Datenbank entfernt und verifiziert (0 verbliebene `QA7-*`-Einträge)
+- **Regression:** `/karteikarten`, `/uebungsaufgaben`, `/probeklausuren`, `/todos`, `/dashboard` bleiben im eingeloggten Zustand normal erreichbar (HTTP 200), keine Beeinträchtigung durch PROJ-7
+- **Responsive:** Chromium, Mobile (375px)/Tablet (768px)/Desktop (1440px) — kein horizontales Overflow auf `/wiederholungsplan` in allen drei Breiten
+
+### Summary
+- **Acceptance Criteria:** 27/28 vollständig verifiziert (live oder Code-Review); 1 nicht erfüllt (BUG-1)
+- **Bugs Found:** 2 total (0 Critical, 0 High, 2 Medium)
+- **Security:** Pass, mit einem Medium-Accessibility-Finding (BUG-2) und der dokumentierten, bereits aus PROJ-1–6 akzeptierten Grenze (kein Multi-Account-RLS-Live-Test)
+- **Production Ready:** YES im engeren Sinn der Projekt-Regel (kein Critical/High offen) — beide gefundenen Bugs sind nicht blockierend, aber echte, reproduzierte Abweichungen von der Spec bzw. von den Accessibility-Vorgaben des Projekts
+- **Recommendation:** Nutzer entscheidet über Priorität (siehe Frage unten) — bei sofortigem Fix: kurzer, lokal begrenzter `/frontend`-Nachtrag für beide Bugs (BUG-1: try/catch + Fehlerzustand in `page.tsx`; BUG-2: `role="button"`/`tabIndex`/`onKeyDown` auf der Eintrags-Card), danach erneutes `/qa`. Bei Zurückstellen: Status bleibt „In Review", Deploy möglich, sobald der Nutzer das für vertretbar hält
 
 ## Deployment
 _To be added by /deploy_

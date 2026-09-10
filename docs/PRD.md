@@ -19,7 +19,7 @@ Der Examensplaner StB ist eine digitale Webanwendung zur strukturierten Vorberei
 | P0 (MVP) | Übungsaufgaben (Zwei-Dropdown-Bewertung, adaptive Wiederholung) | Planned |
 | P0 (MVP) | Probeklausuren (Drei-Stufen-Nacharbeit) | Planned |
 | P0 (MVP) | Wiederholungsplan (hub-übergreifende Aggregation) | Planned |
-| P0 (MVP) | Kompetenzanalyse (3-Ebenen-Drilldown, gewichtete Berechnung, Fehlermuster-Empfehlungen) | Planned |
+| P0 (MVP) | Kompetenzanalyse (3-Ebenen-Drilldown, Stufenmodell 2.0, Kalibrierung, Fehlermuster-Empfehlungen) | Planned |
 | P1 | 3-Phasen-Struktur der Vorbereitung (Phasen-Modul, phasenabhängige Priorisierung) | Roadmap |
 | P1 | Erweitertes Klausur-Zähler-Meilensteinsystem | Roadmap |
 | P1 | Zeitmanagement-Tracking in Probeklausuren (Stufe 2) | Roadmap |
@@ -45,7 +45,7 @@ Der Examensplaner StB ist eine digitale Webanwendung zur strukturierten Vorberei
 - Backend: Supabase (PostgreSQL + Auth, Row Level Security aktiviert)
 - Design-System bereits vorhanden — siehe `docs/design-system.md` (aus Claude-Design-Prototyp übernommen: Farben, Typografie DM Serif Display/DM Sans, Ampelsystem, Hub-Farben)
 - Fachlicher Rahmen: 11 Prüfungsfächer, gruppiert nach 3 Klausurtagen (Verfahrensrecht, Ertragsteuern, Bilanzsteuerrecht)
-- Offener Punkt: Die Berechnungsspezifikation der Kompetenzanalyse im Konzeptpapier weicht vom HTML-Prototyp ab — eine aktualisierte Spezifikation liegt vor und muss vor dem Feature-Spec für Kompetenzanalyse (`/write-spec`) final geklärt werden
+- Berechnungsspezifikation der Kompetenzanalyse: `Berechnungsspezifikation_Kompetenzmodell.md` (Stufenmodell 2.0, Niveau+Haltbarkeit) ist verbindlich und ersetzt das ursprüngliche Konzeptpapier vollständig — geklärt im Rahmen von PROJ-3/PROJ-4/PROJ-5 und final bestätigt in PROJ-8
 
 ## Non-Goals
 - Keine Mehrbenutzerfähigkeit / kein Multi-Tenant-Betrieb in dieser Version

@@ -99,6 +99,7 @@ export function AufgabeForm({
   const [neueKategorieFarbe, setNeueKategorieFarbe] = useState(KATEGORIE_PALETTE[0].farbe);
   const [kategorieError, setKategorieError] = useState<string | null>(null);
   const [isKategorieAnlegen, setIsKategorieAnlegen] = useState(false);
+  const [kategorieSelectOpen, setKategorieSelectOpen] = useState(false);
 
   const form = useForm<AufgabeFormValues>({
     resolver: zodResolver(aufgabeSchema),
@@ -142,7 +143,18 @@ export function AufgabeForm({
       setKategorieError(result.error);
       return;
     }
+    // Radix Select kennt einen Wert erst, nachdem das zugehörige <SelectItem>
+    // mindestens einmal gerendert wurde (es spiegelt den Wert intern in ein
+    // verstecktes natives <select>, dessen <option>s erst beim Öffnen des
+    // Dropdowns entstehen) — ein form.setValue() auf einen noch nie gezeigten
+    // Wert wird sonst von Radix selbst wieder auf "" zurückgesetzt, sobald
+    // das native Select seinen Wert nicht auflösen kann (siehe PROJ-6 QA
+    // BUG-1). Das Dropdown daher kurz öffnen, damit die neue eigene
+    // Kategorie registriert wird, dann den Wert setzen und wieder schließen.
+    setKategorieSelectOpen(true);
+    await new Promise((resolve) => requestAnimationFrame(resolve));
     form.setValue("kategorie", `eigene:${result.kategorie.id}`);
+    setKategorieSelectOpen(false);
     setKategorieAnlegenOffen(false);
     setNeueKategorieName("");
   }
@@ -214,7 +226,13 @@ export function AufgabeForm({
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Kategorie (optional)</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value} disabled={isPending}>
+                    <Select
+                      onValueChange={field.onChange}
+                      value={field.value}
+                      open={kategorieSelectOpen}
+                      onOpenChange={setKategorieSelectOpen}
+                      disabled={isPending}
+                    >
                       <FormControl>
                         <SelectTrigger>
                           <SelectValue />

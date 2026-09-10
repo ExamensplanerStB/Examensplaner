@@ -1,6 +1,6 @@
 # PROJ-6: Todo-Liste
 
-## Status: In Review
+## Status: In Progress
 **Created:** 2026-09-09
 **Last Updated:** 2026-09-10
 
@@ -258,6 +258,14 @@ und über Geräte hinweg synchron.
 
 **Bekannte Umgebungslücke (nicht durch dieses Feature verursacht):** `npm test` (Vitest) schlägt in dieser Session durchgängig mit `[vitest-pool-runner]: Timeout waiting for worker to respond` fehl — sowohl mit dem `forks`- als auch dem `threads`-Pool, und reproduzierbar auch bei einer bereits bestehenden, zuvor grünen Testdatei (`karteikarten-intervall.test.ts`), die durch PROJ-6 nicht verändert wurde. Ein einfacher `worker_threads`-Sanity-Check außerhalb von Vitest funktioniert im selben Verzeichnis einwandfrei — die Ursache liegt also in Vitest selbst (vermutlich workerseitiges Modul-Laden über den iCloud-synchronisierten Projektpfad), nicht im Testcode. Die 17 neuen Unit-Tests in `aufgaben.test.ts` sind dadurch aktuell nicht automatisiert verifizierbar, wurden aber manuell gegen die Implementierung durchgerechnet. Analog zur bereits in PROJ-1 dokumentierten `npm run lint`-Tooling-Lücke — zu prüfen, sobald die Umgebung das wieder zulässt.
 
+### Bugfix 2026-09-10: BUG-1 (Kategorie-Auswahl aus QA)
+
+**Root Cause bestätigt und behoben** in `src/components/aufgaben/aufgabe-form.tsx`. Genauer lokalisiert als in der QA-Diagnose: `@radix-ui/react-select` spiegelt den Select-Wert in ein verstecktes natives `<select>` (`SelectBubbleInput`), sobald die Komponente innerhalb eines `<form>`-Elements steht (`isFormControl = form || !!trigger.closest("form")` — bei uns immer `true`, da der Select im `<form onSubmit=...>` liegt). Dieses native Select kennt aber nur `<option>`s, deren zugehöriges `<SelectItem>` mindestens einmal gerendert wurde (Registrierung läuft über `SelectItemText`, gemountet nur bei geöffnetem, portal-basiertem `SelectContent`). Wird der Wert per `form.setValue()` auf eine noch nie gezeigte eigene Kategorie gesetzt, kennt das native Select diesen Wert nicht, und Radix ruft intern `onValueChange("")` auf, um den (aus seiner Sicht ungültigen) Wert zu korrigieren — das überschreibt den gerade gesetzten Wert wieder, bevor das Formular abgeschickt wird. Per `node_modules`-Quellcode-Lektüre nachvollzogen, nicht nur vermutet.
+
+**Fix:** `handleKategorieAnlegen()` öffnet das Kategorie-Select jetzt kurz kontrolliert (`kategorieSelectOpen`-State), wartet einen Animationsframe (`requestAnimationFrame`) — genug Zeit, damit Radix das neue `<SelectItem>` mountet und registriert — setzt danach den Wert per `form.setValue()` und schließt das Select wieder. Kein `forceMount` in der installierten Radix-Version (2.2.6) verfügbar, daher dieser Weg statt einer dauerhaften Registrierung aller Items.
+
+**Nachgetestet:** Vollständiges Playwright-Regressionsskript erneut ausgeführt (dasselbe wie in der QA-Runde, gegen das echte Supabase-Projekt) — **32/32 Prüfungen bestanden**, inkl. dediziertem Re-Test von BUG-1 mit drei Verifikationsebenen: (1) Select zeigt die neue Kategorie sofort an, (2) Badge erscheint in der Liste, (3) **nach vollständigem Page-Reload** (echter Serverstand statt Client-State) ist die Kategorie weiterhin korrekt zugeordnet. Zusätzlich verifiziert: das normale Öffnen/Auswählen aus dem Dropdown funktioniert unverändert (keine Regression), `npm run build` fehlerfrei, `npx playwright test` weiterhin 11/11 grün. Kein sichtbares Flackern des Dropdowns beim Anlegen bemerkt (der kurze programmatische Open-Zustand fällt zeitlich mit dem Schließen des „Eigene Kategorie anlegen"-Panels zusammen).
+
 ## Backend Implementation Notes (Backend Developer)
 
 **Umgesetzt (2026-09-10):**
@@ -380,7 +388,7 @@ Vorab: `npm test` (Vitest) schlägt in dieser Sandbox weiterhin projektweit mit 
 - **Auswirkung:** Kein Datenverlust (die Aufgabe wird trotzdem gespeichert, nur ohne Kategorie) und ein Workaround existiert (Aufgabe danach erneut öffnen und die Kategorie aus dem jetzt korrekt befüllten Dropdown auswählen — dieser Pfad funktioniert nachweislich fehlerfrei, siehe AC „Kategorie-Dedupe" und „Feste Kategorie"). Dennoch: stiller Datenfehler ohne jede Fehlermeldung bei einem explizit in der Spec benannten, zum Kern-Feature gehörenden Ablauf („Eigene Kategorie anlegen" ist einer der Haupt-User-Stories) — daher High statt Medium eingestuft.
 - **Priority:** Fix before deployment
 - **Hinweis für den Fix:** Betrifft denselben Formularcode sowohl beim Anlegen als auch beim Bearbeiten einer Aufgabe (ein gemeinsames `AufgabeForm`). Naheliegende Lösungsrichtungen (nicht umgesetzt, da QA laut Prozess keine Bugs selbst behebt): den Dropdown nach dem Anlegen kurz programmatisch öffnen/schließen, damit Radix das neue Item registriert, bevor `setValue` aufgerufen wird; oder den ausgewählten Kategorienamen unabhängig vom Radix-internen Item-Tracking direkt anzeigen (z.B. eigener, kontrollierter Anzeige-Text statt `<SelectValue />`, solange die Liste das Item noch nicht enthält).
-- **Status:** OPEN — nicht behoben (QA-Skill-Regel: Bugs werden nur gefunden/dokumentiert, nicht selbst gefixt)
+- **Status: FIXED (2026-09-10)** — behoben in `/frontend` (siehe Frontend Implementation Notes, Abschnitt „Bugfix 2026-09-10"). Vollständiges 32/32-Regressionsskript erneut ausgeführt, inkl. Re-Test mit Page-Reload-Verifikation. Noch nicht erneut formal per `/qa` abgenommen.
 
 ### Automatisierte Tests
 - **Unit-/Integrationstests:** 34 Tests vorhanden (`src/lib/aufgaben.test.ts`: 17, `src/app/todos/actions.test.ts`: 17) — decken die komplette Gruppierungs-/Sortier-/Überfällig-/Kategorie-Auflösungslogik sowie alle Server-Action-Pfade inkl. Dedupe- und Validierungsfällen ab. Manuell gegen die Implementierung durchgerechnet und zusätzlich per Live-Test bestätigt (siehe oben); automatisierte Ausführung weiterhin durch die vorbestehende Vitest-Umgebungslücke blockiert (s.o.). Keine neuen Unit-Tests in dieser QA-Runde nötig — Abdeckung bereits vollständig, keine ungetestete non-triviale Logik identifiziert

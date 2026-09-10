@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type MouseEvent } from "react";
+import { useState, type KeyboardEvent, type MouseEvent } from "react";
 import { useRouter } from "next/navigation";
 
 import { Badge } from "@/components/ui/badge";
@@ -75,6 +75,17 @@ export function WiederholungsEintragCard({
     router.push(ZIEL_ROUTE[eintrag.art]);
   }
 
+  // Nur reagieren, wenn die Card selbst (nicht ein verschachteltes
+  // interaktives Element wie der "Nachschreiben erledigt"-Button) den Fokus
+  // hat — sonst würde z.B. Enter auf dem Button zusätzlich navigieren.
+  function handleKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+    if (event.target !== event.currentTarget) return;
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      navigiereZumHub();
+    }
+  }
+
   async function handleNachschreiben(event: MouseEvent) {
     event.stopPropagation();
     if (eintrag.art !== "klausur") return;
@@ -87,8 +98,12 @@ export function WiederholungsEintragCard({
   return (
     <div
       onClick={navigiereZumHub}
+      onKeyDown={handleKeyDown}
+      role="button"
+      tabIndex={0}
       title={`Zu ${ZIEL_LABEL[eintrag.art]} wechseln`}
-      className="cursor-pointer rounded-lg border border-border bg-card p-[18px] shadow-card transition-colors hover:border-border-strong"
+      aria-label={`Zu ${ZIEL_LABEL[eintrag.art]} wechseln`}
+      className="cursor-pointer rounded-lg border border-border bg-card p-[18px] shadow-card transition-colors hover:border-border-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
     >
       <div className="flex flex-wrap items-center gap-2">
         {eintrag.art === "karteikarte" && (

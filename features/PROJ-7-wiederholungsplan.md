@@ -261,6 +261,18 @@ neue Infrastruktur.
 
 **Bewusst noch nicht möglich:** Kein authentifizierter Live-Durchklick im Browser (Golden Path: Filter wechseln, auf einen Karteikarten-/Übungsaufgaben-/Klausur-Eintrag klicken → landet im richtigen Hub, „Nachschreiben erledigt" klicken → Eintrag verschwindet, Persistenz nach Reload) — mir liegt in dieser Sitzung kein Test-Account/Passwort für das echte Supabase-Projekt vor (identische, bereits in PROJ-4s Frontend-Phase dokumentierte Grenze). Da alle Datenquellen aber bereits live angebunden sind (kein lokaler Platzhalter-State wie sonst zu Beginn), sollte ein Login-Test direkt reale Daten zeigen. Bitte einmal selbst gegenprüfen: `/wiederholungsplan` aufrufen → falls fällige Karteikarten/Übungsaufgaben/Probeklausuren-Nachschreiben aus den bestehenden Hubs vorhanden sind, sollten sie hier gruppiert erscheinen; Filter durchspielen; bei einer fälligen Nachschreiben-Erinnerung „Nachschreiben erledigt" klicken und prüfen, dass sie sowohl hier als auch unter `/probeklausuren` verschwindet.
 
+### Nachtrag: BUG-1 und BUG-2 behoben (2026-09-10)
+
+**BUG-1 (Medium, aus QA):** Fehlende Fehlerbehandlung beim initialen Laden des Plans — ein fehlschlagender Supabase-Query wurde durch `?? []` wie „keine Daten" behandelt, statt die geforderte Verbindungsfehler-Meldung zu zeigen.
+- Fix: `src/app/wiederholungsplan/page.tsx` sammelt jetzt alle zehn Query-Ergebnisse aus `Promise.all` in `results` und prüft `results.some((r) => r.error)`, **bevor** die Daten destrukturiert/gemappt werden. Bei einem Treffer wird statt des Plans eine Karte mit der bereits bestehenden `CONNECTION_ERROR`-Konstante aus `src/lib/wiederholungsplan.ts` gerendert (`role="alert"`, identischer Text wie bei den Server-Action-Fehlern der Hubs). Kopf-/Titelbereich wurde dafür in eine kleine `PageShell`-Hilfskomponente ausgelagert, damit Erfolgs- und Fehlerzustand denselben Rahmen teilen, ohne Duplizierung.
+- Live verifiziert (gezielt sabotiert und sofort zurückgesetzt): ein Query gegen eine absichtlich falsch benannte Tabelle (`karteikarten_themen_QA_SABOTAGE_TEMP`) führte zuverlässig zur Fehlermeldung statt eines leeren/teilweisen Plans; nach dem Zurücksetzen lädt die Seite wieder normal mit den echten Daten (verifiziert per `git diff` — keine verbleibende Abweichung).
+
+**BUG-2 (Medium, aus QA):** Karteikarten-/Übungsaufgaben-Einträge waren nur per Maus/Touch navigierbar, kein fokussierbares Element für die Tastatur.
+- Fix: `src/components/wiederholungsplan/wiederholungs-eintrag-card.tsx` — die Card trägt jetzt `role="button"`, `tabIndex={0}`, einen `onKeyDown`-Handler (Enter/Leertaste lösen dieselbe Navigation wie der Klick aus) sowie ein `aria-label` und sichtbare `focus-visible`-Ring-Klassen (identisches Muster wie die shadcn-`Button`-Komponente). Der Handler prüft `event.target === event.currentTarget`, damit ein Enter auf dem verschachtelten „Nachschreiben erledigt"-Button nicht zusätzlich zur Card-Navigation bubbelt.
+- Live verifiziert: Card lässt sich per `.focus()`/Tab fokussieren, Enter auf der fokussierten Karteikarten-Card navigiert korrekt zu `/karteikarten`.
+
+**Getestet nach Fix:** `npm test` weiterhin 214/214 grün, `npm run build` weiterhin fehlerfrei. Live-Regression: normaler Seitenaufruf (ohne Sabotage) zeigt weiterhin korrekt die echten, gruppierten Einträge — keine Nebenwirkung durch die Fehlerbehandlung im Erfolgsfall.
+
 ## QA Test Results
 
 **Tested:** 2026-09-10

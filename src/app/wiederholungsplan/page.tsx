@@ -3,7 +3,25 @@ import { groupFaecherByKlausurtag, type Fach, type Thema } from "@/lib/klausurta
 import type { Karteikarte, KarteikartenTyp } from "@/lib/karteikarten";
 import type { Bewertung, Uebungsaufgabe, UebungsaufgabeReview } from "@/lib/uebungsaufgaben";
 import type { Klausur, KlausurTeil } from "@/lib/klausuren";
+import { CONNECTION_ERROR } from "@/lib/wiederholungsplan";
 import { createClient } from "@/lib/supabase/server";
+
+function PageShell({ children }: { children: React.ReactNode }) {
+  return (
+    <main className="min-h-screen bg-background p-4 sm:p-8">
+      <div className="mx-auto max-w-4xl space-y-6">
+        <header className="space-y-1">
+          <h1 className="text-3xl text-foreground sm:text-4xl">Wiederholungsplan</h1>
+          <p className="text-sm text-muted-foreground">
+            Fällige und geplante Wiederholungen aus Karteikarten, Übungsaufgaben und
+            Probeklausuren — hub-übergreifend an einer Stelle.
+          </p>
+        </header>
+        {children}
+      </div>
+    </main>
+  );
+}
 
 /**
  * Lädt live aus den bereits produktiven Tabellen von PROJ-3/4/5 — keine
@@ -13,18 +31,7 @@ import { createClient } from "@/lib/supabase/server";
 export default async function WiederholungsplanPage() {
   const supabase = await createClient();
 
-  const [
-    { data: faecher },
-    { data: themen },
-    { data: karten },
-    { data: kartenThemen },
-    { data: aufgaben },
-    { data: aufgabenThemen },
-    { data: reviews },
-    { data: klausuren },
-    { data: teile },
-    { data: teileThemen },
-  ] = await Promise.all([
+  const results = await Promise.all([
     supabase.from("faecher").select("id, kuerzel, name, klausurtag").order("name"),
     supabase.from("themen").select("id, fach_id, name, klausurrelevanz").order("name"),
     supabase
@@ -48,6 +55,34 @@ export default async function WiederholungsplanPage() {
     supabase.from("klausur_teile").select("id, klausur_id, fach_id, max_punkte, erreichte_punkte"),
     supabase.from("klausur_teile_themen").select("teil_id, thema_id"),
   ]);
+
+  // Ein fehlgeschlagenes Laden darf nie als "keine Wiederholungen" erscheinen
+  // (AC "Fehler & Sicherheit") — bei jedem Query-Fehler zeigen wir die
+  // generische Verbindungsfehler-Meldung statt eines (teilweise) leeren Plans.
+  if (results.some((r) => r.error)) {
+    return (
+      <PageShell>
+        <div className="rounded-lg border border-border bg-card py-16 text-center shadow-card">
+          <p className="text-sm font-medium text-destructive" role="alert">
+            {CONNECTION_ERROR}
+          </p>
+        </div>
+      </PageShell>
+    );
+  }
+
+  const [
+    { data: faecher },
+    { data: themen },
+    { data: karten },
+    { data: kartenThemen },
+    { data: aufgaben },
+    { data: aufgabenThemen },
+    { data: reviews },
+    { data: klausuren },
+    { data: teile },
+    { data: teileThemen },
+  ] = results;
 
   const klausurtage = groupFaecherByKlausurtag((faecher ?? []) as Fach[]);
   const initialThemen: Thema[] = (themen ?? []).map((row) => ({
@@ -131,25 +166,16 @@ export default async function WiederholungsplanPage() {
   }));
 
   return (
-    <main className="min-h-screen bg-background p-4 sm:p-8">
-      <div className="mx-auto max-w-4xl space-y-6">
-        <header className="space-y-1">
-          <h1 className="text-3xl text-foreground sm:text-4xl">Wiederholungsplan</h1>
-          <p className="text-sm text-muted-foreground">
-            Fällige und geplante Wiederholungen aus Karteikarten, Übungsaufgaben und
-            Probeklausuren — hub-übergreifend an einer Stelle.
-          </p>
-        </header>
-        <WiederholungsplanManager
-          klausurtage={klausurtage}
-          themen={initialThemen}
-          initialKarten={initialKarten}
-          initialAufgaben={initialAufgaben}
-          initialReviews={initialReviews}
-          initialKlausuren={initialKlausuren}
-          initialTeile={initialTeile}
-        />
-      </div>
-    </main>
+    <PageShell>
+      <WiederholungsplanManager
+        klausurtage={klausurtage}
+        themen={initialThemen}
+        initialKarten={initialKarten}
+        initialAufgaben={initialAufgaben}
+        initialReviews={initialReviews}
+        initialKlausuren={initialKlausuren}
+        initialTeile={initialTeile}
+      />
+    </PageShell>
   );
 }

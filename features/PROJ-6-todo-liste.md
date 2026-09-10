@@ -1,6 +1,6 @@
 # PROJ-6: Todo-Liste
 
-## Status: Deployed
+## Status: Planned
 **Created:** 2026-09-09
 **Last Updated:** 2026-09-10
 
@@ -9,7 +9,8 @@
 
 ## User Stories
 - Als Lukas möchte ich eine Aufgabe mit Titel und optional Datum anlegen, damit ich mir Aufgaben und Fristen für die Examensvorbereitung merken kann, ohne sie extern zu notieren.
-- Als Lukas möchte ich eine Aufgabe einer Kategorie (z.B. Wiederholung, Frist/Prüfung) und einer Priorität zuordnen, damit ich auf einen Blick erkenne, worum es sich handelt und wie dringend sie ist.
+- Als Lukas möchte ich eine Aufgabe einer selbst angelegten Kategorie (z.B. „Repetitorium") und einer Priorität zuordnen, damit ich auf einen Blick erkenne, worum es sich handelt und wie dringend sie ist.
+- Als Lukas möchte ich nicht mehr benötigte eigene Kategorien löschen können, damit sich über die Zeit keine unübersichtliche Liste ansammelt.
 - Als Lukas möchte ich eine Aufgabe mit einem Klick als erledigt markieren, damit ich meinen Fortschritt sehe, ohne sie sofort zu löschen.
 - Als Lukas möchte ich meine Aufgaben nach Offen/Erledigt/Alle filtern und nach Zeit, Priorität oder Kategorie sortieren, damit ich die Liste je nach Situation unterschiedlich einsehen kann.
 - Als Lukas möchte ich sofort erkennen, welche offenen Aufgaben überfällig sind, damit ich sie nicht aus Versehen liegen lasse.
@@ -22,7 +23,9 @@
 - Verknüpfung mit dem Themenkatalog (Fach/Thema, PROJ-2) — Aufgaben sind nicht Teil der Kompetenzanalyse (PROJ-8 wertet ausschließlich PROJ-3/4/5 aus) und brauchen daher keine Themen-Zuordnung
 - Wiederkehrende Aufgaben/Serientermine — nicht Teil des MVP
 - Erinnerungen/Benachrichtigungen (Push, E-Mail, Browser-Notifications) — keine Notification-Infrastruktur im Projekt vorhanden
-- Verwalten (Umbenennen/Löschen) eigener Kategorien nach dem Anlegen — MVP unterstützt nur das Anlegen; Verwaltung kann später ergänzt werden, analog zur Themenverwaltung in PROJ-2
+- Feste, vordefinierte Kategorien (vormals Vorlesung/Seminar, Lernsession, Wiederholung, Frist/Prüfung) — entfernt, siehe Decision Log; es gibt nur noch eigene, vom Nutzer angelegte Kategorien
+- Umbenennen eigener Kategorien — MVP unterstützt Anlegen und Löschen, aber kein Bearbeiten des Namens/der Farbe nach dem Anlegen; kann später ergänzt werden, analog zur Themenverwaltung in PROJ-2
+- Eigener „Kategorien verwalten"-Bereich (analog `/themen`) — Anlegen und Löschen erfolgen stattdessen direkt im Aufgabe-Formular, siehe AC „Kategorie"
 - Aufnahme von Aufgaben in den hub-übergreifenden Wiederholungsplan (PROJ-7) — dieser aggregiert ausschließlich fällige Wiederholungen aus Karteikarten/Übungsaufgaben/Probeklausuren, keine Todos
 - Mehrfachauswahl/Stapel-Aktionen, Import/Export, Offline-Nutzung, Bilder/Anhänge — analog PROJ-3/4/5 nicht Teil des MVP
 
@@ -43,10 +46,12 @@
 - [ ] Angenommen der Nutzer wählt „Zeitslot", wenn die eingetragene Endzeit vor oder gleich der Startzeit liegt, dann wird das Speichern verhindert und eine Validierungsfehlermeldung angezeigt
 
 ### Kategorie
-- [ ] Angenommen der Nutzer legt eine Aufgabe an, wenn er eine der vier festen Kategorien (Vorlesung/Seminar, Lernsession, Wiederholung, Frist/Prüfung) wählt, dann wird die Aufgabe mit der zugehörigen Kategorie-Farbe in der Liste angezeigt
 - [ ] Angenommen der Nutzer klickt auf „Eigene Kategorie anlegen", wenn er einen Namen und eine Farbe aus der Farbauswahl wählt und bestätigt, dann steht die neue Kategorie sofort in der Kategorie-Auswahl zur Verfügung und ist direkt der aktuellen Aufgabe zugeordnet
 - [ ] Angenommen der Nutzer gibt für eine eigene Kategorie einen Namen ein, der (unabhängig von Groß-/Kleinschreibung) bereits existiert, dann wird keine doppelte Kategorie angelegt, sondern die bestehende Kategorie der Aufgabe zugeordnet
 - [ ] Angenommen eine Aufgabe hat keine Kategorie zugewiesen, dann wird kein Kategorie-Badge angezeigt
+- [ ] Angenommen der Nutzer öffnet das „Eigene Kategorie anlegen"-Panel, dann sieht er dort auch eine Liste aller bereits angelegten eigenen Kategorien, jede mit einem Löschen-Icon
+- [ ] Angenommen der Nutzer klickt bei einer Kategorie auf Löschen, dann erscheint ein Bestätigungsdialog, bevor sie endgültig entfernt wird
+- [ ] Angenommen eine Kategorie ist aktuell einer oder mehreren Aufgaben zugeordnet, wenn der Nutzer sie löscht (nach Bestätigung), dann bleiben alle betroffenen Aufgaben vollständig erhalten und verlieren ausschließlich ihre Kategorie-Zuordnung (kein Kategorie-Badge mehr, alle anderen Felder unverändert)
 
 ### Priorität
 - [ ] Angenommen der Nutzer legt eine Aufgabe an, wenn er eine Priorität (Hoch/Mittel/Niedrig) wählt, dann wird die Priorität farblich (Ampel-Rot/Amber/Grün) in der Liste angezeigt
@@ -84,6 +89,8 @@
 - Neue eigene Kategorie mit einem Namen, der (groß-/kleinschreibungsunabhängig) bereits existiert → keine Dublette, bestehende Kategorie wird wiederverwendet
 - Zwei Browser-Tabs bearbeiten dieselbe Aufgabe parallel → der zuletzt gespeicherte Stand gewinnt, kein Konflikt-Dialog im MVP
 - Datum liegt weit in der Vergangenheit oder Zukunft → uneingeschränkt erlaubt, auch für rückwirkend erfasste Aufgaben
+- Eine Kategorie mit vielen zugeordneten Aufgaben wird gelöscht → alle betroffenen Aufgaben verlieren gleichzeitig ihre Kategorie-Zuordnung, bleiben aber ansonsten unverändert bestehen (kein Datenverlust bei den Aufgaben selbst)
+- Die zuletzt verbleibende eigene Kategorie wird gelöscht → Kategorie-Auswahl zeigt danach nur noch „Keine Kategorie" und „Eigene Kategorie anlegen", keine Fehlermeldung
 
 ## Open Questions
 <!-- Keine offenen Punkte aus dem Interview -->
@@ -101,6 +108,10 @@
 | Überfällige offene Aufgaben werden optisch hervorgehoben (Ampel-Rot) | Sichtbarkeit von Fristdruck ist für die Examensvorbereitung wichtig | 2026-09-09 |
 | Löschen nur mit Bestätigungsdialog (AlertDialog) | Konsistent mit der bestehenden Konvention in PROJ-3/4/5 | 2026-09-09 |
 | Keine Verknüpfung mit dem Themenkatalog (Fach/Thema) | Todos fließen nicht in die Kompetenzanalyse (PROJ-8) ein; Abhängigkeit in INDEX.md listet nur PROJ-1 | 2026-09-09 |
+| **Refine 2026-09-10:** Feste Kategorien (Vorlesung/Seminar, Lernsession, Wiederholung, Frist/Prüfung) vollständig entfernt — löst die Entscheidung vom 2026-09-09 ab, es gibt jetzt nur noch eigene Kategorien | Nutzerentscheidung nach erster Nutzung des Live-Deployments: die festen Kategorien (ursprünglich 1:1 aus dem Prototyp übernommen) passten nicht zum tatsächlichen Bedarf | 2026-09-10 |
+| Löschen eigener Kategorien jetzt Teil des MVP (vorher Out of Scope) | Ohne feste Kategorien sind eigene Kategorien der einzige Mechanismus — ohne Löschfunktion sammeln sich unerwünschte/doppelte Einträge an (in der Praxis bereits durch Testdaten beobachtet) | 2026-09-10 |
+| Löschen einer Kategorie kaskadiert NICHT auf zugeordnete Aufgaben — nur die Zuordnung wird entfernt, die Aufgaben bleiben vollständig erhalten | Ausdrückliche Nutzervorgabe; Datenverlust bei Aufgaben durch eine Kategorie-Aufräumaktion wäre unerwartet und riskant | 2026-09-10 |
+| Löschen-UI lebt im bestehenden „Eigene Kategorie anlegen"-Panel (Liste vorhandener Kategorien + Löschen-Icon), kein separater „Kategorien verwalten"-Bereich wie bei Themen (PROJ-2) | Kategorien werden nur innerhalb der Todo-Liste verwendet (kein hub-übergreifender Bezug wie Themen); ein eigener Bereich wäre unverhältnismäßiger Aufwand für den Umfang | 2026-09-10 |
 
 ### Technical Decisions
 | Decision | Rationale | Date |

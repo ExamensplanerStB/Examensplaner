@@ -1,6 +1,6 @@
 # PROJ-8: Kompetenzanalyse
 
-## Status: Approved
+## Status: Deployed
 **Created:** 2026-09-11
 **Last Updated:** 2026-09-12
 
@@ -393,4 +393,20 @@ Bugfix-Commit: `fix(PROJ-8): Render Klausurreife-Trend and Fach name in Größte
 - **Recommendation:** Deploy. Offene, nicht blockierende Punkte für später: Autorisierungstest mit einem zweiten echten Account nachholen, sobald verfügbar; Test-Account-Altdaten bei Gelegenheit aufräumen oder als dauerhaften Fixture-Pool dokumentieren.
 
 ## Deployment
-_To be added by /deploy_
+
+**Produktions-URL:** https://examensplaner-v2fg.vercel.app/kompetenzanalyse
+**Deployed:** 2026-09-12
+**Git-Tag:** `v1.6.0-PROJ-8`
+
+**Pre-Deployment-Checks:** `npm run build` fehlerfrei, `npx vitest run` 272/272 grün, `npx playwright test` 30/30 grün, `git diff origin/main..HEAD --stat` vor dem Push geprüft (21 Dateien, ausschließlich erwartete PROJ-8-Dateien plus `docs/PRD.md`/`features/INDEX.md`, keine Secrets, keine `.env`-Dateien). Migration `20260912090000_create_stufen_verlauf.sql` bereits während `/backend` per `npx supabase db push` auf das Live-Projekt angewendet — keine neue Migration in diesem Schritt nötig. Keine neuen Environment-Variablen (nutzt dasselbe Supabase-Projekt wie alle bestehenden Hubs). `npm run lint` weiterhin ohne Ergebnis (bekannte, seit PROJ-1 dokumentierte Tooling-Lücke, nicht PROJ-8-spezifisch, siehe PROJ-7-Präzedenzfall).
+
+**Deployment-Ablauf:** Kein Erstdeployment — Vercel-Projekt und Auto-Deploy-on-Push bestehen bereits seit PROJ-1. `git push origin main` (7 Commits) hat den Auto-Deploy zuverlässig ausgelöst; die neue Route war beim ersten Live-Check bereits vollständig gebaut und aktiv (kein wahrnehmbarer Propagationsverzug).
+
+**Post-Deployment-Verifikation:**
+- `/kompetenzanalyse` liefert unauthentifiziert korrekt `307` → `/login?redirect=%2Fkompetenzanalyse`
+- Security-Headers (`Strict-Transport-Security`, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy`) auf der neuen Route per `curl -I` bestätigt gesetzt — identisch zu den bestehenden Hubs, keine PROJ-8-spezifische Änderung an `next.config.ts` nötig
+- Authentifizierter Live-Check gegen die echte Produktions-URL (mit dem dedizierten QA-Test-Account): `/kompetenzanalyse` rendert korrekt mit echten Daten, **beide zuvor gefundenen und behobenen Bugs live in Produktion bestätigt** (Klausurreife zeigt den Trend „–", „Größte Blockaden" zeigt den Fach-Namen), keine Konsolenfehler — rein lesend verifiziert, bewusst keine Testdaten in Produktion angelegt/gelöscht (identisches Vorgehen wie beim PROJ-7-Deployment)
+- Der in der QA-Session beobachtete, dev-mode-spezifische Kaltstart-Verbindungsfehler trat beim Produktions-Check **nicht** auf — bestätigt die Vermutung, dass er ausschließlich mit `next dev`/Turbopack zusammenhängt, nicht mit dem vorkompilierten Produktions-Build
+- Golden Path (3-Ebenen-Drilldown, Kalibrierung, Fehlermuster-Erkennung) bereits während `/qa` live gegen dasselbe Supabase-Projekt verifiziert — keine erneute mutierende Verifikation in Produktion nötig, da Code identisch zum QA-geprüften Stand ist
+
+**Production-Ready Essentials:** Bereits projektweit aus PROJ-1 vorhanden (Security-Headers, Vercel-eigenes Monitoring) — keine PROJ-8-spezifischen Ergänzungen nötig, keine neuen externen Services oder Secrets eingeführt.

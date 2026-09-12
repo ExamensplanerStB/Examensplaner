@@ -22,7 +22,7 @@
 | PROJ-5 | Probeklausuren-Hub — Drei-Stufen-Nacharbeitsmodell (fachlich, analytisch, Nachschreiben nach 75 Tagen) | P0 | PROJ-1, PROJ-2 | Deployed | [Spec](PROJ-5-probeklausuren-hub.md) | 2026-07-28 |
 | PROJ-6 | Todo-Liste — Aufgaben/Fristen, ganztägig/Zeitslot, kalenderverzahnt | P0 | PROJ-1 | Deployed | [Spec](PROJ-6-todo-liste.md) | 2026-07-28 |
 | PROJ-7 | Wiederholungsplan — hub-übergreifende Aggregation fälliger/geplanter Wiederholungen, Filter, Ampelfarben | P0 | PROJ-3, PROJ-4, PROJ-5 | Deployed | [Spec](PROJ-7-wiederholungsplan.md) | 2026-07-28 |
-| PROJ-8 | Kompetenzanalyse — 3-Ebenen-Drilldown, Stufenmodell 2.0 (Niveau+Haltbarkeit, Stufen 0–4 statt Prozent), Fach-Ebene-Kennzahlen, Kalibrierung, Fehlermuster-Handlungsempfehlungen | P0 | PROJ-3, PROJ-4, PROJ-5 | Planned | [Spec](PROJ-8-kompetenzanalyse.md) | 2026-07-28 |
+| PROJ-8 | Kompetenzanalyse — 3-Ebenen-Drilldown, Stufenmodell 2.0 (Niveau+Haltbarkeit, Stufen 0–4 statt Prozent), Fach-Ebene-Kennzahlen, Kalibrierung, Fehlermuster-Handlungsempfehlungen | P0 | PROJ-3, PROJ-4, PROJ-5 | Architected | [Spec](PROJ-8-kompetenzanalyse.md) | 2026-07-28 |
 | PROJ-9 | Dashboard — Zeitstrahl/Countdown, Wochenkalender, Todos, fällige Wdh., Kompetenz-Mini-Übersicht, Klausur-Zähler, Top-3-Schwachstellen | P0 | PROJ-6, PROJ-7, PROJ-8 | Roadmap | — | 2026-07-28 |
 
 <!-- Add features above this line -->

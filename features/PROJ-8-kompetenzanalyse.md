@@ -1,8 +1,8 @@
 # PROJ-8: Kompetenzanalyse
 
-## Status: Planned
+## Status: Architected
 **Created:** 2026-09-11
-**Last Updated:** 2026-09-11
+**Last Updated:** 2026-09-12
 
 ## Dependencies
 - PROJ-1 (Supabase-Infrastruktur-Setup) — Auth-Schutz der Route, RLS-Muster
@@ -114,8 +114,8 @@
 - Performance: Laden der Fächer-Übersicht (Ebene 1, 11 Fächer) < 500ms (etwas großzügiger als PROJ-1–5, da hier über alle Hubs aggregiert wird)
 
 ## Open Questions
-- [ ] Genauer Auslösemechanismus für den täglichen Stufen-Snapshot (Cron-Job vs. Berechnung beim ersten Seitenaufruf des Tages) — wird in `/architecture` festgelegt
-- [ ] Zeichenlimits/Pagination für die Fehlernotizen-Liste bei sehr vielen Einträgen — wird in `/architecture` festgelegt, analog PROJ-2–5
+- [x] Genauer Auslösemechanismus für den täglichen Stufen-Snapshot — in `/architecture` festgelegt: Server-Aktion beim Öffnen der Seite (kein Cron-Job), siehe Tech Design
+- [x] Zeichenlimits/Pagination für die Fehlernotizen-Liste bei sehr vielen Einträgen — in `/architecture` festgelegt: keine Pagination, einfache scrollbare Liste (Single-User-Datenmengen), siehe Tech Design
 
 ## Decision Log
 
@@ -136,12 +136,72 @@
 <!-- Added by /architecture -->
 | Decision | Rationale | Date |
 |----------|-----------|------|
+| Gleiches Architekturmuster wie Wiederholungsplan (PROJ-7): Server Component lädt alle Quelldaten, reine Berechnungsfunktion(en) werten aus, eine Client-Komponente übernimmt Ebene-1/2/3-Navigation. Kein eigener API-Bereich | Kompetenzanalyse ist strukturell dieselbe Art von hub-übergreifender, rein lesender Auswertungsseite wie der bereits gebaute Wiederholungsplan — kein Grund für ein anderes Muster | 2026-09-12 |
+| Bestehende Gültigkeitsfunktionen aus `karteikarten-intervall.ts`, `uebungsaufgaben-wiederholung.ts` und `klausuren-berechnung.ts` werden aufgerufen statt in der Kompetenzanalyse neu implementiert | Verhindert, dass das Gültig/Verfallen-Badge im jeweiligen Hub und die Stufenberechnung der Kompetenzanalyse auseinanderlaufen; einzige Quelle der Wahrheit pro Beleg-Typ | 2026-09-12 |
+| `klausuren-berechnung.ts` wird um `BESTEHEN_SICHER`, `KLAUSUR_HALTBARKEIT` und eine Gültigkeitsprüfung für einen einzelnen Klausurteil ergänzt, statt eine Kopie in einer neuen Datei anzulegen | Diese Werte gehören inhaltlich zu Klausuren (Abschnitt 4 der Berechnungsspezifikation), nicht zur Kompetenzanalyse selbst; Wiederverwendung statt Duplikation, analog Karteikarten/Übungsaufgaben | 2026-09-12 |
+| Stufen-Snapshot wird über eine Server-Aktion geschrieben, die beim Öffnen der Kompetenzanalyse ausgelöst wird (upsert, eindeutig auf Thema+Datum) — kein Cron-Job, kein separater Zeitplan-Dienst | Löst die offene Frage aus der Spec zugunsten der einfachsten Lösung ohne zusätzliche Infrastruktur; passt zum Kontext „kein Budget, Single-User, tägliche Nutzung erwartet". Tage ohne Seitenaufruf bleiben ohne Snapshot — für die Kalibrierung unkritisch, da sie fehlende Tage ohnehin überspringt (siehe Spec) | 2026-09-12 |
+| Kalibrierung (Prädiktive Validität + Selbstbewertungs-Bias) ist eine reine Berechnungsfunktion ohne gespeichertes Ergebnis, wird bei jedem Laden neu berechnet | Konsistent mit dem Prinzip „nichts Berechnetes wird gespeichert" aus PROJ-3/PROJ-4, keine Sonderregel nur für Kalibrierung nötig | 2026-09-12 |
+| Keine Pagination der Fehlernotizen-Liste in Ebene 3 — einfache scrollbare Liste | Löst die zweite offene Frage aus der Spec; bei realistischen Single-User-Datenmengen pro Thema ist eine vollständige Liste ausreichend performant, analog den bestehenden Listen in PROJ-3–5 | 2026-09-12 |
 
 ---
 <!-- Sections below are added by subsequent skills -->
 
 ## Tech Design (Solution Architect)
-_To be added by /architecture_
+
+### A) Komponentenstruktur
+
+```
+/kompetenzanalyse (neue Seite)
+├── Breadcrumb (nur ab Ebene 2/3 sichtbar: „Kompetenzanalyse / [Fach] / [Thema]")
+├── EBENE 1 – Fächer-Übersicht (Startzustand)
+│   ├── Fächer-Sidebar — 11 Fächer gruppiert nach Klausurtag K1/K2/K3, Ampel-Punkt +
+│   │   Ø-Stufe je Fach, klickbar → Ebene 2
+│   ├── Stufenverteilung-Card — gestapelter Balken je Fach (Segmente Stufe 0–4) + Legende
+│   ├── Klausurreife-Card — je Fach mit ≥ 1 Klausur: Anzahl, Bestehens-Quote, Trend,
+│   │   ggf. „braucht frische Klausur"
+│   ├── Größte-Blockaden-Liste — Top 6 Themen nach Priowert, klickbar → Ebene 3
+│   └── Kalibrierungs-Card (unten) — entweder „noch nicht genug Daten (x/10)" oder die
+│       zwei Auswertungen (Prädiktive Validität, Selbstbewertungs-Bias)
+├── EBENE 2 – Themen-Liste eines Fachs
+│   ├── Kopfzeile (Fach-Name, Klausurtag-Badge, Gesamt-Ø-Stufe)
+│   └── Themen-Liste, sortiert nach Priowert — je Zeile: Name, Stufen-Segmente,
+│       Stufen-Badge, Beleganzahl, klickbar → Ebene 3
+└── EBENE 3 – Themendetail
+    ├── Kopfzeile (Fach, Thema, großes Stufen-Badge)
+    ├── 4-Segment-Stufenanzeige + „Basis bröckelt"-Warnung (falls zutreffend) +
+    │   Blockade-Hinweis
+    ├── Vier-Säulen-Liste (Theorie/Klausurtechnik/Übung/Probeklausur) je mit
+    │   Gültig/Verfallen/Keine-Daten-Status
+    ├── Handlungsempfehlungs-Card (Blockade-Text + Fehlermuster-Zeilen + Standardtext)
+    └── Fehlernotizen-Liste, chronologisch, mit Hub-Badge
+```
+
+Wiederverwendet werden die bestehenden Design-System-Bausteine (Card, Badge/Ampel, Breadcrumb, Select). Neu sind nur zwei kleine, Kompetenzanalyse-spezifische Anzeige-Bausteine: der gestapelte Stufenbalken und die 4-Segment-Stufenanzeige — beides reine Darstellungskomponenten ohne eigene Logik.
+
+### B) Datenmodell (in einfacher Sprache)
+
+Die Kompetenzanalyse besitzt fast keine eigenen Daten. Sie liest, was in den Hubs Karteikarten (PROJ-3), Übungsaufgaben (PROJ-4) und Probeklausuren (PROJ-5) bereits gespeichert ist, und berechnet daraus bei jedem Seitenaufruf live: Stufe, Blockade, Priowert, Klausurreife, Fehlermuster. Nichts davon wird zusätzlich gespeichert — dasselbe Prinzip wie beim bereits gebauten Wiederholungsplan.
+
+Einzige neue, tatsächlich gespeicherte Information: **Stufen-Snapshot**, eine Zeile pro Thema und Kalendertag:
+- Welches Thema
+- Welches Datum
+- Welche Stufe (0–4) hatte das Thema an diesem Tag
+- War die Basis zu diesem Zeitpunkt schon „bröckelnd"?
+
+Reine Historie für die spätere Kalibrierung (Prädiktive Validität) und einen noch nicht gebauten Trend-Chart — wird beim Öffnen der Kompetenzanalyse automatisch höchstens einmal pro Tag und Thema angelegt, nie überschrieben oder bearbeitet. Geschützt nach demselben Zugriffsmuster wie alle anderen Tabellen (jeder Nutzer sieht nur eigene Zeilen).
+
+### C) Technische Entscheidungen (Begründung für PM)
+
+1. **Gleiches Muster wie Wiederholungsplan (PROJ-7), kein neuer API-Bereich:** Die Seite lädt serverseitig alle nötigen Daten, eine reine Berechnungsfunktion wertet sie aus, eine interaktive Komponente übernimmt Navigation (Ebene 1/2/3) und Darstellung.
+2. **Bestehende Gültigkeits-Logik wird wiederverwendet, nicht dupliziert:** Kompetenzanalyse ruft die bereits getesteten Funktionen aus den drei Hubs auf, statt sie neu zu schreiben — verhindert, dass das Gültig/Verfallen-Badge im Hub und die Stufenberechnung in der Kompetenzanalyse jemals auseinanderlaufen.
+3. **`klausuren-berechnung.ts` wird um die fehlenden Werte ergänzt** (`BESTEHEN_SICHER`, `KLAUSUR_HALTBARKEIT`, Gültigkeitsprüfung für einen einzelnen Klausurteil) statt einer Kopie an anderer Stelle — diese Werte gehören inhaltlich zu Klausuren.
+4. **Snapshot-Schreiben läuft beim Öffnen der Seite, kein Cron-Job:** Eine kleine, eigene Server-Aktion (gleiches Muster wie die bereits bestehenden Aktionen je Hub) prüft beim Laden, ob für jedes Thema heute schon ein Snapshot existiert, und legt ihn sonst an. Einfachste Lösung ohne zusätzliche Infrastruktur — passt zum Kontext „kein Budget, Single-User, tägliche Nutzung erwartet".
+5. **Kalibrierung ist ebenfalls eine reine Berechnungsfunktion**, kein gespeichertes Auswertungsergebnis — wird bei jedem Laden neu berechnet.
+6. **Keine Pagination der Fehlernotizen-Liste:** Bei realistischer Nutzung durch einen einzelnen Nutzer bleibt die Anzahl pro Thema klein; eine einfache scrollbare Liste reicht, analog zu PROJ-3–5.
+
+### D) Abhängigkeiten (zu installierende Pakete)
+
+Keine neuen Pakete. Die App hat bereits alles Nötige (Next.js, Supabase-Client, shadcn/ui, Vitest). Es kommt lediglich eine neue Datenbank-Tabelle (`stufen_verlauf`) sowie neue reine Berechnungsdateien hinzu — keine neue Bibliothek.
 
 ## QA Test Results
 _To be added by /qa_

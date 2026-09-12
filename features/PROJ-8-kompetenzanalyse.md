@@ -233,6 +233,18 @@ Keine neuen Pakete. Die App hat bereits alles Nötige (Next.js, Supabase-Client,
 - **Live im Browser verifiziert (vom Nutzer, mit seinem echten Account gegen das echte Supabase-Projekt, da keine Zugangsdaten in dieser Session vorlagen):** Ebene 1 lädt mit korrekten „keine Daten"-Zuständen (graue Ampeln) bei leerer Lerndatenbank, Drilldown Ebene 1 → Fach (Ebene 2) → Thema (Ebene 3) funktioniert, Breadcrumb-Navigation zurück funktioniert. Bestätigt „passt nun" nach Bereinigung der oben genannten QA-Testfixtures.
 - **Nicht in dieser Session verifiziert (siehe Bewusst noch nicht umgesetzt):** RLS-Verweigerung für `stufen_verlauf`, Verbindungsfehler-Anzeige mit echtem Netzwerkausfall, Kalibrierung mit ≥ 10 echten Klausuren (Nutzer hat aktuell 0), Responsive-Verhalten auf Tablet/Mobile-Breiten — sollte in `/qa` nachgeholt werden.
 
+### Nachtrag: BUG-1 und BUG-2 behoben (2026-09-12)
+
+**BUG-1 (High, aus QA):** Die Klausurreife-Card zeigte Anzahl und Anteil bestanden, aber keinen Trend, obwohl `klausurreifeVon()` in `src/lib/kompetenzanalyse.ts` den Wert bereits korrekt berechnete (unverändert, bereits unit-getestet) — die Komponente `faecher-uebersicht.tsx` rendere das Feld schlicht nirgends.
+- Fix: neue Hilfsfunktion `formatTrend()` (Pfeil ▲/▼/→ + Prozentpunkte, ±2-Prozentpunkte-Schwelle für die Richtung wie im Prototyp, „–" bei `trend === null`) plus eine vierte Grid-Spalte in der Klausurreife-Zeile.
+- Live gegen das echte Supabase-Projekt verifiziert: Abgabenordnung (1 Klausur, < 6) zeigt jetzt korrekt „1 Kl. · 0 % best. · –".
+
+**BUG-2 (Medium, aus QA):** „Größte Blockaden" zeigte Thema, Blockade-Text und Stufen-Badge, aber keinen Fach-Namen, obwohl die AC „inkl. Fach" ausdrücklich fordert.
+- Fix: Fach-Name wird über die bereits im Component-Scope vorhandene `verteilungByFach`-Map (aufgebaut aus den ohnehin übergebenen `fachVerteilungen`) aufgelöst und der Blockade-Zeile vorangestellt (`{fachName} · {blockadeKurztext(ts)}`) — kein neuer Prop nötig, keine Änderung an `kompetenzanalyse-manager.tsx` oder der Berechnungsschicht.
+- Live verifiziert: Zeilen zeigen jetzt z.B. „Abgabenordnung · Stufe 1 blockiert: …" bzw. „Einkommensteuer · Stufe 4 blockiert: …".
+
+**Getestet:** `npm run build` fehlerfrei, `npx vitest run` weiterhin 266/266 grün (reine Anzeige-Änderung, keine Berechnungslogik berührt, keine neuen/geänderten Tests nötig), beide Fixes live gegen das echte Supabase-Projekt mit dem QA-Test-Account bestätigt (Screenshots, keine Konsolenfehler).
+
 ## Backend Implementation Notes (Backend Developer)
 
 **Umgesetzt (2026-09-12):**

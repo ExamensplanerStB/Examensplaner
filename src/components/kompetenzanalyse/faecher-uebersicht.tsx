@@ -39,6 +39,19 @@ function stufeGerundet(durchschnitt: number | null): Stufe {
   return durchschnitt === null ? 0 : (Math.round(durchschnitt) as Stufe);
 }
 
+/**
+ * Trend-Text + Farbe für die Klausurreife-Card. `null` (< 6 Klausuren) -> "–".
+ * ±2-Prozentpunkte-Schwelle für die Pfeilrichtung, analog Prototyp.
+ */
+function formatTrend(trend: number | null): { text: string; colorClass: string } {
+  if (trend === null) return { text: "–", colorClass: "text-ink-3" };
+  const prozentpunkte = Math.round(trend * 100);
+  const vorzeichen = prozentpunkte > 0 ? "+" : "";
+  if (trend > 0.02) return { text: `▲ ${vorzeichen}${prozentpunkte} %`, colorClass: "text-ampel-green" };
+  if (trend < -0.02) return { text: `▼ ${prozentpunkte} %`, colorClass: "text-ampel-red" };
+  return { text: `→ ${vorzeichen}${prozentpunkte} %`, colorClass: "text-ink-3" };
+}
+
 export function FaecherUebersicht({
   klausurtage,
   fachVerteilungen,
@@ -142,23 +155,29 @@ export function FaecherUebersicht({
             {klausurreifeEintraege.length === 0 ? (
               <p className="py-4 text-center text-sm text-ink-3">Noch keine Probeklausuren erfasst.</p>
             ) : (
-              klausurreifeEintraege.map((reife) => (
-                <div
-                  key={reife.fach.id}
-                  className="grid grid-cols-[1fr_auto_auto] items-center gap-3 border-t border-border py-2.5 first:border-t-0"
-                >
-                  <div className="min-w-0">
-                    <div className="text-sm font-semibold text-foreground">{reife.fach.name}</div>
-                    {reife.brauchtFrischeKlausur && (
-                      <div className="text-xs text-ampel-amber">Fach braucht frische Klausur</div>
-                    )}
+              klausurreifeEintraege.map((reife) => {
+                const trend = formatTrend(reife.trend);
+                return (
+                  <div
+                    key={reife.fach.id}
+                    className="grid grid-cols-[1fr_auto_auto_auto] items-center gap-3 border-t border-border py-2.5 first:border-t-0"
+                  >
+                    <div className="min-w-0">
+                      <div className="text-sm font-semibold text-foreground">{reife.fach.name}</div>
+                      {reife.brauchtFrischeKlausur && (
+                        <div className="text-xs text-ampel-amber">Fach braucht frische Klausur</div>
+                      )}
+                    </div>
+                    <span className="whitespace-nowrap text-xs text-ink-3">{reife.anzahl} Kl.</span>
+                    <span className="whitespace-nowrap text-xs font-bold tabular-nums text-foreground">
+                      {Math.round(reife.anteilBestanden * 100)} % best.
+                    </span>
+                    <span className={cn("min-w-[64px] whitespace-nowrap text-right text-xs font-semibold tabular-nums", trend.colorClass)}>
+                      {trend.text}
+                    </span>
                   </div>
-                  <span className="whitespace-nowrap text-xs text-ink-3">{reife.anzahl} Kl.</span>
-                  <span className="whitespace-nowrap text-xs font-bold tabular-nums text-foreground">
-                    {Math.round(reife.anteilBestanden * 100)} % best.
-                  </span>
-                </div>
-              ))
+                );
+              })
             )}
           </Card>
         </div>
@@ -169,30 +188,35 @@ export function FaecherUebersicht({
         {groessteBlockaden.length === 0 ? (
           <p className="px-5 py-8 text-center text-sm text-ink-3">Keine Themen im Themenkatalog.</p>
         ) : (
-          groessteBlockaden.map((ts) => (
-            <button
-              key={ts.thema.id}
-              type="button"
-              onClick={() => onOpenThema(ts.thema.fachId, ts.thema.id)}
-              className="grid w-full grid-cols-[1fr_auto] items-center gap-4 border-t border-border px-5 py-3 text-left first:border-t-0 hover:bg-secondary/40"
-            >
-              <div className="flex min-w-0 items-center gap-2.5">
-                <AmpelDot stufe={ts.stufe} hasData={ts.hasData} size={10} />
-                <div className="min-w-0">
-                  <div className="truncate text-sm font-semibold text-foreground">{ts.thema.name}</div>
-                  <div className="truncate text-xs text-ink-3">{blockadeKurztext(ts)}</div>
-                </div>
-              </div>
-              <span
-                className={cn(
-                  "whitespace-nowrap text-xs font-bold tabular-nums",
-                  AMPEL_TEXT_CLASS[ampelVonStufe(ts.stufe, ts.hasData)]
-                )}
+          groessteBlockaden.map((ts) => {
+            const fachName = verteilungByFach.get(ts.thema.fachId)?.fach.name ?? ts.thema.fachId;
+            return (
+              <button
+                key={ts.thema.id}
+                type="button"
+                onClick={() => onOpenThema(ts.thema.fachId, ts.thema.id)}
+                className="grid w-full grid-cols-[1fr_auto] items-center gap-4 border-t border-border px-5 py-3 text-left first:border-t-0 hover:bg-secondary/40"
               >
-                {ts.hasData ? `Stufe ${ts.stufe}` : "keine Daten"}
-              </span>
-            </button>
-          ))
+                <div className="flex min-w-0 items-center gap-2.5">
+                  <AmpelDot stufe={ts.stufe} hasData={ts.hasData} size={10} />
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-semibold text-foreground">{ts.thema.name}</div>
+                    <div className="truncate text-xs text-ink-3">
+                      {fachName} · {blockadeKurztext(ts)}
+                    </div>
+                  </div>
+                </div>
+                <span
+                  className={cn(
+                    "whitespace-nowrap text-xs font-bold tabular-nums",
+                    AMPEL_TEXT_CLASS[ampelVonStufe(ts.stufe, ts.hasData)]
+                  )}
+                >
+                  {ts.hasData ? `Stufe ${ts.stufe}` : "keine Daten"}
+                </span>
+              </button>
+            );
+          })
         )}
       </Card>
 

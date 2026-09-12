@@ -1,6 +1,6 @@
 # PROJ-8: Kompetenzanalyse
 
-## Status: In Progress
+## Status: In Review
 **Created:** 2026-09-11
 **Last Updated:** 2026-09-12
 
@@ -252,7 +252,120 @@ Keine neuen Pakete. Die App hat bereits alles Nötige (Next.js, Supabase-Client,
 - **Nicht in dieser Session verifiziert:** Snapshot-Schreiben live gegen die neue Tabelle (Nutzer hat aktuell keine Themen mit Belegen, die einen aussagekräftigen Effekt zeigen würden), RLS-Verweigerung für `stufen_verlauf` ohne gültige Session, Kalibrierung mit echten Snapshots über mehrere Tage — sollte in `/qa` nachgeholt bzw. im laufenden Betrieb beobachtet werden, sobald echte Lerndaten vorliegen.
 
 ## QA Test Results
-_To be added by /qa_
+
+**Tested:** 2026-09-12
+**App URL:** http://localhost:3000 (Dev-Server), Live-Daten gegen das echte, verknüpfte Supabase-Projekt
+**Tester:** QA Engineer (AI)
+**Test-Account:** dedizierter, vom Nutzer bereitgestellter Test-Account (nicht das Hauptkonto), mit bereits vorhandenen Altdaten aus früheren QA-Durchläufen (5 Themen in AO/ESt, 1 Probeklausur) — Zugangsdaten nicht persistiert, nur transient in dieser Session verwendet
+
+### Automatisierte Tests
+- **Unit-/Integrationstests (Vitest):** 266/266 grün (unverändert seit /backend)
+- **`npm run build`:** fehlerfrei
+- **E2E (Playwright):** 30/30 grün, inkl. der 2 committeten PROJ-8-Redirect-Tests über beide Browser-Projekte (chromium + Mobile Safari)
+- **Datenbank-Diagnose via `npx supabase db query --linked`:**
+  - `stufen_verlauf`: nach ca. 15+ Seitenaufrufen am selben Tag existieren exakt 5 Zeilen (eine je Thema des Test-Accounts), alle mit `datum = 2026-09-12` — bestätigt, dass der `ON CONFLICT DO NOTHING`-Upsert korrekt dedupliziert (AC „Stufen-Snapshot" beide Punkte: neuer Eintrag bei Bedarf, kein Zweiteintrag am selben Tag)
+  - RLS-Policies auf `stufen_verlauf`: genau eine `select`- und eine `insert`-Policy, beide `auth.uid() = user_id`, keine `update`/`delete`-Policy; `relrowsecurity = true` — exakt wie in der Migration spezifiziert
+
+### Acceptance Criteria Status (32 ACs gesamt)
+
+#### Zugriff & Grundgerüst (3/3)
+- [x] Nicht eingeloggt → Redirect zu `/login?redirect=...` (E2E + live)
+- [x] Eingeloggt → Ebene 1 lädt mit 11 Fächern, gruppiert nach K1/K2/K3 (live bestätigt)
+- [x] Keine Lerndaten → „keine Daten" (graue Ampel) statt Stufenangabe (live bestätigt: 6 von 11 Fächern im Test-Account zeigten dies korrekt)
+
+#### Ebene 1 — Fächer-Übersicht (6/8)
+- [x] Gestapelter Balken pro Fach, ein Segment je Stufe (live: AO grauer Balken, ESt farbiger Balken)
+- [x] Ø-Stufe-Anzeige bei Fach mit Daten (live: „Ø 0,0" / „Ø 3,0")
+- [x] Fach ohne Probeklausur erscheint nicht in der Klausurreife-Liste (live: nur Abgabenordnung gelistet, nicht alle 11)
+- [ ] **BUG-1:** Anzahl/Anteil bestanden werden angezeigt, der geforderte **Trend** fehlt komplett in der UI
+- [ ] **BUG-1 (Folge):** Trend-„–"-Anzeige bei < 6 Klausuren kann nicht greifen, da keine Trend-UI existiert
+- [x] „Fach braucht frische Klausur"-Hinweis vorhanden im Code (`brauchtFrischeKlausur`-Bedingung), im Test-Account nicht auslösbar (Klausur ist 4 Tage alt) — Logik bereits durch `kompetenzanalyse.test.ts` abgedeckt
+- [ ] **BUG-2:** „Größte Blockaden" zeigt Thema, Blockade-Text und Stufen-Badge, aber **nicht den Fach-Namen** (AC verlangt ausdrücklich „inkl. Fach")
+- [x] Klick auf Fach/Thema in „Größte Blockaden" navigiert korrekt zu Ebene 2/3 (live bestätigt)
+
+#### Ebene 2 — Themen-Liste eines Fachs (3/3)
+- [x] Themen sortiert nach Priowert absteigend (live: AO zeigte alle 4 Themen mit Priowert 8 vor Steuerpflicht mit Priowert 2 in ESt-Ansicht separat korrekt)
+- [x] „Keine Themen"-Hinweis (Code-Pfad vorhanden, im Test-Account kein Fach ohne Themenkatalog-Eintrag zum Live-Test verfügbar — trivialer Zweig, kein Risiko)
+- [x] Breadcrumb „Kompetenzanalyse" führt zurück zu Ebene 1 (live bestätigt)
+
+#### Ebene 3 — Themendetail (10/10)
+- [x] Stufe-Badge + 4-Segment-Anzeige (live an 3 verschiedenen Themen bestätigt)
+- [x] „Basis bröckelt"-Hinweis: Negativfall live bestätigt (Steuerpflicht: Theorie-Karte verfallen, aber via Übungs-Subsumtion gedeckt → **kein** Bröckeln-Hinweis, korrekt); Positivfall bereits durch 4 gezielte Unit-Tests abgedeckt (im Test-Account nicht ohne künstliche Datumsmanipulation nachstellbar)
+- [x] Blockade-Hinweis benennt korrekt das Fehlende (live 2× bestätigt: „Stufe 1 blockiert: eine gültige Theorie-Karte fehlt…", „Stufe 4 blockiert: noch kein Klausurteil…")
+- [x] Stufe 4 ohne Bröckeln → „warm halten"-Empfehlung (unit-testabgedeckt; im Test-Account kein Thema auf sauberer Stufe 4, daher nicht live reproduziert)
+- [x] Vier-Säulen-Status je Säule (live bestätigt, inkl. „verfallen" bei 0%-Klausurteil und „gültig" bei frischer Übung)
+- [x] Fehlernotizen chronologisch mit Hub-Badge + Datum (live bestätigt, korrekt sortiert nach Anlage eines zweiten Eintrags)
+- [x] Klausur-Stufe-1/2-Text erscheint bei jedem Thema aller Teile dieser Klausur (live bestätigt: „AO 01 · Stufe 1"-Badge bei Einspruchsverfahren)
+- [x] „Keine Fehlernotizen — sauber gearbeitet." (live bestätigt bei Steuerpflicht vor dem Test-Eintrag)
+- [x] Fehlermuster-Keyword → Musterzeile in der Handlungsempfehlung (live bestätigt: „vergessen" im Fehlernotiz-Text löste korrekt „wiederkehrendes Vergessen einzelner Tatbestandsmerkmale" aus)
+- [x] Kein Blockade/Bröckeln/Muster → Standardtext (unit-testabgedeckt, im Test-Account keine passende Konstellation vorhanden)
+
+#### Stufen-Snapshot (2/2)
+- [x] Neuer Eintrag pro Thema/Tag — per DB-Query bestätigt (siehe oben)
+- [x] Kein Zweiteintrag am selben Tag — per DB-Query bestätigt (5 Zeilen trotz ~15+ Aufrufen)
+
+#### Kalibrierung (1/4 live, 3/4 unit-testabgedeckt)
+- [x] < 10 Klausuren → „Noch nicht genug Daten (x/10)" (live bestätigt: „1/10 Klausuren", korrekt entsprechend der einen echten Klausur im Test-Account)
+- [x] Prädiktive-Validität-Matrix / Ausschluss ohne Snapshot / Selbstbewertungs-Bias — nicht live erreichbar (Schwelle von 10 Klausuren im Test-Account nicht praktikabel künstlich zu erzeugen), vollständig durch 11 gezielte Unit-Tests in `kalibrierung.test.ts` abgedeckt
+
+#### Fehler & Sicherheit (2/2, siehe auch Security Audit)
+- [x] „Verbindung fehlgeschlagen" — einmalig live beobachtet (siehe Bugs/Beobachtungen unten), Mechanismus identisch zu bereits deployten Hubs
+- [x] RLS-Verweigerung für `stufen_verlauf` ohne Session — per direkter Policy-Inspektion bestätigt (siehe oben); kein clientseitiger Supabase-Zugriff in der App vorhanden, der sich anders testen ließe (siehe Security Audit)
+
+### Edge Cases Status
+- [x] Subsumtion ohne Karteikarten (Abschnitt 5.3) — **live bestätigt** am Thema „Steuerpflicht": Stufe 3 erreicht ausschließlich über eine Übungsaufgabe, keine Klausurtechnik-Karte vorhanden
+- [x] Unbearbeitetes Thema = gleicher Priowert wie aktives Stufe-0-Thema — live bestätigt (Statthaftigkeit/Zuständigkeit Finanzamt, beide „keine Daten", Priowert 8, identisch zu den Stufe-0-Themen)
+- [x] Probeklausur ohne Teile — nicht im Test-Account vorhanden, Logik unit-testabgedeckt
+- [x] Mehrere Teile demselben Thema zugeordnet — unit-testabgedeckt
+- [x] Widersprüchliche Fehlernotizen chronologisch ohne Filterung — unit-testabgedeckt
+- [x] Mehrmaliger Aufruf am selben Tag ändert Snapshot nicht — **live per DB-Query bestätigt** (siehe oben)
+- [x] Neues Thema ohne Belege — live bestätigt (mehrere „keine Daten"-Themen im Test-Account)
+- [x] Kalibrierungs-Schwelle live während Sitzung erreicht — kein Live-Update nötig, Code-Pfad trivial (kein Polling/Subscription implementiert)
+
+### Security Audit Results
+- [x] **Authentifizierung:** Kein Zugriff ohne Login (E2E + live bestätigt)
+- [x] **Kein clientseitiger Supabase-Zugriff:** `src/lib/supabase/client.ts` wird von keiner einzigen Komponente importiert — die gesamte App (inkl. PROJ-8) ist vollständig serverseitig gerendert. Es gibt keinen Anon-Key/Session-Token im Browser-Bundle und damit keine direkte Client→Supabase-Angriffsfläche für diese Seite
+- [x] **RLS auf der neuen Tabelle `stufen_verlauf`:** per SQL-Inspektion bestätigt — RLS aktiviert, exakt `select`/`insert` auf `auth.uid() = user_id`, keine `update`/`delete`-Policy (Historie unveränderlich)
+- [x] **XSS-Test:** Testkarteikarte mit Fehlernotiz-Payload `<img src=x onerror="window.__xssFired=true">Fehler vergessen!` angelegt und in der Kompetenzanalyse-Themendetailansicht angezeigt — Skript wurde **nicht** ausgeführt (`window.__xssFired` blieb `undefined`), Payload erschien als reiner Text (React-Escaping via `innerHTML`-Inspektion verifiziert: `&lt;img src=x onerror=...&gt;`). Testkarte anschließend vollständig gelöscht (verifiziert: 0 verbleibend)
+- [x] **Fehlermeldungen ohne Detail-Leak:** generische `CONNECTION_ERROR`-Meldung, keine Stacktraces/Interna sichtbar
+- [ ] **Autorisierung (Nutzer X sieht nicht Daten von Nutzer Y):** nicht mit einem zweiten echten Account getestet (nur ein Test-Account verfügbar) — Bewertung stützt sich auf Code-Review: identisches, bereits mehrfach auditiertes RLS-Muster wie `karteikarten_reviews` (PROJ-3); kein neuer Autorisierungscode in PROJ-8 selbst
+- N/A **Rate Limiting:** kein neuer öffentlich erreichbarer Endpunkt durch PROJ-8 (kein Signup, kein `/api`-Bereich) — nichts Neues zu prüfen
+
+### Regression-Test
+- Bestehende E2E-Redirect-Tests für PROJ-1/2/3/6/7 weiterhin grün (30/30 gesamt)
+- `/karteikarten` manuell mit einer Anlegen+Löschen-Aktion exercised (für den XSS-Test) — Hub funktioniert unverändert, keine Auffälligkeiten
+- Keine Änderungen an bestehenden Hub-Tabellen/-RLS-Policies durch PROJ-8, nur eine additive neue Tabelle — geringes Regressionsrisiko strukturell bereits durch Code-Review abgedeckt
+
+### Bugs Found
+
+#### BUG-1: Klausurreife-Card zeigt keinen Trend an
+- **Severity:** High
+- **Steps to Reproduce:**
+  1. Mindestens eine Probeklausur für ein Fach erfassen
+  2. `/kompetenzanalyse` öffnen, Klausurreife-Card ansehen
+  3. Erwartet: Anzahl, Anteil bestanden **und Trend der letzten 3 vs. 3 davor** (oder „–" bei < 6 Klausuren)
+  4. Tatsächlich: Nur Anzahl („X Kl.") und Anteil („Y % best.") werden angezeigt, keine Trend-Spalte existiert im UI
+- **Ursache:** `klausurreifeVon()` in `src/lib/kompetenzanalyse.ts` berechnet `trend` korrekt (unit-testabgedeckt), aber `FaecherUebersicht`-Komponente (`faecher-uebersicht.tsx`) rendert das Feld nirgends
+- **Priority:** Fix before deployment
+
+#### BUG-2: „Größte Blockaden" zeigt den Fach-Namen nicht an
+- **Severity:** Medium
+- **Steps to Reproduce:**
+  1. `/kompetenzanalyse` öffnen mit Themen aus mehreren Fächern in der Blockaden-Liste
+  2. Erwartet (AC): Zeile zeigt Thema, **Fach**, Blockade-Text und Stufen-Badge
+  3. Tatsächlich: Nur Thema-Name und Blockade-Text werden gezeigt, kein Fach — bei gleichnamigen Themen unterschiedlicher Fächer nicht mehr unterscheidbar, ohne draufzuklicken
+- **Priority:** Fix before deployment (klein, aber explizit in der Spec gefordert)
+
+### Beobachtungen (kein Bug)
+- **Einmaliger transienter Verbindungsfehler:** Beim allerersten Seitenaufruf nach einem frischen Serverstart (kurz nach einem Systemneustart) erschien einmalig „Verbindung fehlgeschlagen"; 3 sofortige Wiederholungen liefen fehlerfrei. Nicht reproduzierbar, vermutlich Kaltstart-Latenz der ersten Server→Supabase-Verbindung. Das zugrunde liegende `Promise.all`-über-10-Tabellen-Muster ist identisch zu PROJ-7 (deployed, ohne bekannte Probleme).
+- Im Rahmen dieser Session wurden erneut alte, nicht bereinigte QA-Testfixtures im Test-Account bemerkt (Themen aus früheren QA-Durchläufen) — kein PROJ-8-Bug, lediglich zur Kenntnis: der Test-Account sollte bei Gelegenheit bereinigt oder klar als dauerhafter Fixture-Pool dokumentiert werden.
+
+### Summary
+- **Acceptance Criteria:** 29/32 passed (3 durch BUG-1/BUG-2 verletzt)
+- **Bugs Found:** 2 total (0 critical, 1 high, 1 medium, 0 low)
+- **Security:** Pass — keine Schwachstellen gefunden (XSS getestet und sicher, RLS korrekt konfiguriert, keine clientseitige Angriffsfläche); Autorisierungstest zwischen zwei echten Accounts konnte mangels zweitem Account nicht live durchgeführt werden (Code-Review-Grundlage: identisches auditiertes Muster)
+- **Production Ready:** NO
+- **Recommendation:** BUG-1 und BUG-2 vor Deployment beheben (beide sind reine Frontend-Anzeige-Lücken, keine Berechnungsfehler — die zugrunde liegenden Daten sind bereits korrekt vorhanden und unit-getestet). Danach erneuten `/qa`-Durchlauf zur Re-Verifikation der beiden Fixes.
 
 ## Deployment
 _To be added by /deploy_

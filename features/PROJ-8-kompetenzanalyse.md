@@ -233,6 +233,24 @@ Keine neuen Pakete. Die App hat bereits alles Nötige (Next.js, Supabase-Client,
 - **Live im Browser verifiziert (vom Nutzer, mit seinem echten Account gegen das echte Supabase-Projekt, da keine Zugangsdaten in dieser Session vorlagen):** Ebene 1 lädt mit korrekten „keine Daten"-Zuständen (graue Ampeln) bei leerer Lerndatenbank, Drilldown Ebene 1 → Fach (Ebene 2) → Thema (Ebene 3) funktioniert, Breadcrumb-Navigation zurück funktioniert. Bestätigt „passt nun" nach Bereinigung der oben genannten QA-Testfixtures.
 - **Nicht in dieser Session verifiziert (siehe Bewusst noch nicht umgesetzt):** RLS-Verweigerung für `stufen_verlauf`, Verbindungsfehler-Anzeige mit echtem Netzwerkausfall, Kalibrierung mit ≥ 10 echten Klausuren (Nutzer hat aktuell 0), Responsive-Verhalten auf Tablet/Mobile-Breiten — sollte in `/qa` nachgeholt werden.
 
+## Backend Implementation Notes (Backend Developer)
+
+**Umgesetzt (2026-09-12):**
+- `supabase/migrations/20260912090000_create_stufen_verlauf.sql`: neue Tabelle `stufen_verlauf` (`user_id`, `thema_id` FK auf `themen` mit `on delete cascade`, `datum`, `stufe` 0–4, `basis_broeckelt`, `created_at`). RLS aktiviert nach etabliertem Muster: `select`/`insert`-Policy auf `auth.uid() = user_id`, bewusst **keine** Update-/Delete-Policy — ein Snapshot ist unveränderlich, sobald er existiert (identisches Muster zu `karteikarten_reviews` aus PROJ-3). Eindeutiger Index auf `(thema_id, datum)` erzwingt „höchstens ein Snapshot pro Thema und Tag" auf DB-Ebene.
+- `src/app/kompetenzanalyse/actions.ts`: neue Server-Aktion `speichereStufenSnapshot(themen, quellen)` — berechnet `themenStufenVon` serverseitig und schreibt sie per `upsert` mit `onConflict: "thema_id,datum", ignoreDuplicates: true` (SQL `ON CONFLICT DO NOTHING`), damit wiederholte Aufrufe am selben Tag nichts verändern (kein Aufruf `UPDATE`). Fehler werden bewusst verschluckt (try/catch), damit ein DB-Problem beim Snapshot-Schreiben nie den Seitenaufruf blockiert.
+- **Aufruf direkt aus der Server Component statt über einen Client-Trigger:** `speichereStufenSnapshot` wird in `src/app/kompetenzanalyse/page.tsx` direkt nach dem Laden aller Quelldaten awaited — Server-Aktionen sind normale async Funktionen und können serverseitig direkt aufgerufen werden, nicht nur aus Client-Interaktionen heraus. Das entspricht exakt „Server-Aktion beim Öffnen der Seite" aus dem Tech Design, vermeidet aber einen zusätzlichen Client→Server-Roundtrip nach der Hydration und die damit verbundene Verzögerung/React-StrictMode-Doppelausführung. Kein Abweichen von der Architekturentscheidung, nur eine Präzisierung des Aufrufwegs.
+- `src/app/kompetenzanalyse/page.tsx`: lädt jetzt zusätzlich `stufen_verlauf` (für die Kalibrierungs-Card) und übergibt echte Daten statt der bisherigen leeren Platzhalter-Konstante.
+- `src/app/kompetenzanalyse/actions.test.ts`: 5 neue Vitest-Tests (kein Supabase-Aufruf ohne Themen/Session, korrekter Upsert inkl. Optionen, Fehler und Exceptions werden verschluckt) — gleiches Mock-Pattern wie die bestehenden `actions.test.ts`-Dateien (`createClient` gemockt, kein echter Netzwerkzugriff).
+- Migration erfolgreich auf das echte, verknüpfte Supabase-Projekt angewendet (`npx supabase db push`, vom Nutzer autorisiert/durchgeführt).
+
+**Sicherheit:** Kein neuer API-Bereich (Projekt-Konvention: ausschließlich Server Actions + Server Components, kein `src/app/api/`). Einziger neuer Schreibpfad ist der Snapshot-Upsert, RLS-geschützt wie oben beschrieben. Alle Lesezugriffe in `page.tsx` nutzen ausschließlich bereits bestehende, RLS-geschützte Tabellen.
+
+**Getestet:**
+- **Unit-Tests (Vitest):** 266/266 grün (261 aus dem Frontend-Durchlauf + 5 neue für `speichereStufenSnapshot`).
+- **`npm run build`:** weiterhin fehlerfrei.
+- **`npx supabase db push`:** erfolgreich, Migration `20260912090000_create_stufen_verlauf.sql` auf dem Live-Projekt angewendet (Ausgabe: `"Finished supabase db push."`).
+- **Nicht in dieser Session verifiziert:** Snapshot-Schreiben live gegen die neue Tabelle (Nutzer hat aktuell keine Themen mit Belegen, die einen aussagekräftigen Effekt zeigen würden), RLS-Verweigerung für `stufen_verlauf` ohne gültige Session, Kalibrierung mit echten Snapshots über mehrere Tage — sollte in `/qa` nachgeholt bzw. im laufenden Betrieb beobachtet werden, sobald echte Lerndaten vorliegen.
+
 ## QA Test Results
 _To be added by /qa_
 

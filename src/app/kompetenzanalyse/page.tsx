@@ -3,9 +3,11 @@ import { groupFaecherByKlausurtag, type Fach, type Thema } from "@/lib/klausurta
 import type { Karteikarte, KarteikartenTyp } from "@/lib/karteikarten";
 import type { Bewertung, Uebungsaufgabe, UebungsaufgabeReview } from "@/lib/uebungsaufgaben";
 import type { Klausur, KlausurTeil } from "@/lib/klausuren";
-import { CONNECTION_ERROR } from "@/lib/kompetenzanalyse";
+import { CONNECTION_ERROR, type Stufe } from "@/lib/kompetenzanalyse";
 import type { StufenSnapshot } from "@/lib/kalibrierung";
 import { createClient } from "@/lib/supabase/server";
+
+import { speichereStufenSnapshot } from "./actions";
 
 function PageShell({ children }: { children: React.ReactNode }) {
   return (
@@ -24,14 +26,12 @@ function PageShell({ children }: { children: React.ReactNode }) {
 }
 
 /**
- * Lädt live aus den bereits produktiven Tabellen von PROJ-2/3/4/5 — keine
- * eigene Stufen-Tabelle nötig für die Berechnung selbst (siehe Tech Design:
- * Stufe wird bei jedem Laden aus den Rohdaten berechnet).
- *
- * `snapshots` (für Kalibrierung/späteren Trend) ist bewusst eine leere
- * Platzhalter-Konstante: `stufen_verlauf` existiert als Tabelle noch nicht,
- * das Schreiben des täglichen Snapshots folgt in `/backend` (siehe Frontend
- * Implementation Notes in der Feature-Spec).
+ * Lädt live aus den bereits produktiven Tabellen von PROJ-2/3/4/5 — die
+ * Stufe selbst wird bei jedem Laden aus den Rohdaten berechnet, keine eigene
+ * Tabelle dafür (siehe Tech Design). Einzige Ausnahme: `stufen_verlauf`
+ * (täglicher Snapshot für Kalibrierung/späteren Trend) wird geladen UND nach
+ * dem Laden per Server-Aktion für heute ergänzt, falls noch nicht vorhanden
+ * (siehe `speichereStufenSnapshot`).
  */
 export default async function KompetenzanalysePage() {
   const supabase = await createClient();
@@ -51,6 +51,7 @@ export default async function KompetenzanalysePage() {
       .select("id, bezeichnung, datum, quelle, note, stufe1_text, stufe2_text, nachschreiben_erledigt, created_at"),
     supabase.from("klausur_teile").select("id, klausur_id, fach_id, max_punkte, erreichte_punkte"),
     supabase.from("klausur_teile_themen").select("teil_id, thema_id"),
+    supabase.from("stufen_verlauf").select("thema_id, datum, stufe, basis_broeckelt"),
   ]);
 
   if (results.some((r) => r.error)) {
@@ -76,6 +77,7 @@ export default async function KompetenzanalysePage() {
     { data: klausuren },
     { data: teile },
     { data: teileThemen },
+    { data: snapshots },
   ] = results;
 
   const alleFaecher = (faecher ?? []) as Fach[];
@@ -160,7 +162,21 @@ export default async function KompetenzanalysePage() {
     erreichtePunkte: row.erreichte_punkte === null ? null : Number(row.erreichte_punkte),
   }));
 
-  const initialSnapshots: StufenSnapshot[] = [];
+  const initialSnapshots: StufenSnapshot[] = (snapshots ?? []).map((row) => ({
+    themaId: row.thema_id,
+    datum: String(row.datum).slice(0, 10),
+    stufe: row.stufe as Stufe,
+    basisBroeckelt: row.basis_broeckelt,
+  }));
+
+  await speichereStufenSnapshot(initialThemen, {
+    themen: initialThemen,
+    karten: initialKarten,
+    aufgaben: initialAufgaben,
+    reviews: initialReviews,
+    klausuren: initialKlausuren,
+    teile: initialTeile,
+  });
 
   return (
     <PageShell>

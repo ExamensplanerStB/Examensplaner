@@ -7,6 +7,7 @@ import type { StufenSnapshot } from "@/lib/kalibrierung";
 import {
   ampelVonStufe,
   blockadeKurztext,
+  formatTrend,
   type FachVerteilung,
   type KlausurreifeEintrag,
   type Stufe,
@@ -37,19 +38,6 @@ function formatStufeLabel(durchschnitt: number | null): string {
 
 function stufeGerundet(durchschnitt: number | null): Stufe {
   return durchschnitt === null ? 0 : (Math.round(durchschnitt) as Stufe);
-}
-
-/**
- * Trend-Text + Farbe für die Klausurreife-Card. `null` (< 6 Klausuren) -> "–".
- * ±2-Prozentpunkte-Schwelle für die Pfeilrichtung, analog Prototyp.
- */
-function formatTrend(trend: number | null): { text: string; colorClass: string } {
-  if (trend === null) return { text: "–", colorClass: "text-ink-3" };
-  const prozentpunkte = Math.round(trend * 100);
-  const vorzeichen = prozentpunkte > 0 ? "+" : "";
-  if (trend > 0.02) return { text: `▲ ${vorzeichen}${prozentpunkte} %`, colorClass: "text-ampel-green" };
-  if (trend < -0.02) return { text: `▼ ${prozentpunkte} %`, colorClass: "text-ampel-red" };
-  return { text: `→ ${vorzeichen}${prozentpunkte} %`, colorClass: "text-ink-3" };
 }
 
 export function FaecherUebersicht({
@@ -172,7 +160,7 @@ export function FaecherUebersicht({
                     <span className="whitespace-nowrap text-xs font-bold tabular-nums text-foreground">
                       {Math.round(reife.anteilBestanden * 100)} % best.
                     </span>
-                    <span className={cn("min-w-[64px] whitespace-nowrap text-right text-xs font-semibold tabular-nums", trend.colorClass)}>
+                    <span className={cn("min-w-[64px] whitespace-nowrap text-right text-xs font-semibold tabular-nums", AMPEL_TEXT_CLASS[trend.farbe])}>
                       {trend.text}
                     </span>
                   </div>

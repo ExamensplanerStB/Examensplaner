@@ -1,6 +1,6 @@
 # PROJ-8: Kompetenzanalyse
 
-## Status: In Review
+## Status: Approved
 **Created:** 2026-09-11
 **Last Updated:** 2026-09-12
 
@@ -271,7 +271,7 @@ Keine neuen Pakete. Die App hat bereits alles Nötige (Next.js, Supabase-Client,
 **Test-Account:** dedizierter, vom Nutzer bereitgestellter Test-Account (nicht das Hauptkonto), mit bereits vorhandenen Altdaten aus früheren QA-Durchläufen (5 Themen in AO/ESt, 1 Probeklausur) — Zugangsdaten nicht persistiert, nur transient in dieser Session verwendet
 
 ### Automatisierte Tests
-- **Unit-/Integrationstests (Vitest):** 266/266 grün (unverändert seit /backend)
+- **Unit-/Integrationstests (Vitest):** 272/272 grün (266 aus /backend + 6 neue `formatTrend`-Tests im Rahmen des BUG-1-Fixes, siehe Re-Test unten)
 - **`npm run build`:** fehlerfrei
 - **E2E (Playwright):** 30/30 grün, inkl. der 2 committeten PROJ-8-Redirect-Tests über beide Browser-Projekte (chromium + Mobile Safari)
 - **Datenbank-Diagnose via `npx supabase db query --linked`:**
@@ -285,14 +285,14 @@ Keine neuen Pakete. Die App hat bereits alles Nötige (Next.js, Supabase-Client,
 - [x] Eingeloggt → Ebene 1 lädt mit 11 Fächern, gruppiert nach K1/K2/K3 (live bestätigt)
 - [x] Keine Lerndaten → „keine Daten" (graue Ampel) statt Stufenangabe (live bestätigt: 6 von 11 Fächern im Test-Account zeigten dies korrekt)
 
-#### Ebene 1 — Fächer-Übersicht (6/8)
+#### Ebene 1 — Fächer-Übersicht (8/8, nach Re-Test)
 - [x] Gestapelter Balken pro Fach, ein Segment je Stufe (live: AO grauer Balken, ESt farbiger Balken)
 - [x] Ø-Stufe-Anzeige bei Fach mit Daten (live: „Ø 0,0" / „Ø 3,0")
 - [x] Fach ohne Probeklausur erscheint nicht in der Klausurreife-Liste (live: nur Abgabenordnung gelistet, nicht alle 11)
-- [ ] **BUG-1:** Anzahl/Anteil bestanden werden angezeigt, der geforderte **Trend** fehlt komplett in der UI
-- [ ] **BUG-1 (Folge):** Trend-„–"-Anzeige bei < 6 Klausuren kann nicht greifen, da keine Trend-UI existiert
+- [x] **BUG-1 behoben:** Trend wird jetzt angezeigt (siehe Re-Test unten)
+- [x] **BUG-1 (Folge) behoben:** Trend-„–"-Anzeige bei < 6 Klausuren live bestätigt („Abgabenordnung" mit 1 Klausur zeigt „–")
 - [x] „Fach braucht frische Klausur"-Hinweis vorhanden im Code (`brauchtFrischeKlausur`-Bedingung), im Test-Account nicht auslösbar (Klausur ist 4 Tage alt) — Logik bereits durch `kompetenzanalyse.test.ts` abgedeckt
-- [ ] **BUG-2:** „Größte Blockaden" zeigt Thema, Blockade-Text und Stufen-Badge, aber **nicht den Fach-Namen** (AC verlangt ausdrücklich „inkl. Fach")
+- [x] **BUG-2 behoben:** „Größte Blockaden" zeigt jetzt den Fach-Namen (siehe Re-Test unten)
 - [x] Klick auf Fach/Thema in „Größte Blockaden" navigiert korrekt zu Ebene 2/3 (live bestätigt)
 
 #### Ebene 2 — Themen-Liste eines Fachs (3/3)
@@ -352,6 +352,7 @@ Keine neuen Pakete. Die App hat bereits alles Nötige (Next.js, Supabase-Client,
 
 #### BUG-1: Klausurreife-Card zeigt keinen Trend an
 - **Severity:** High
+- **Status:** ✅ Fixed and re-verified (2026-09-12) — siehe Re-Test unten
 - **Steps to Reproduce:**
   1. Mindestens eine Probeklausur für ein Fach erfassen
   2. `/kompetenzanalyse` öffnen, Klausurreife-Card ansehen
@@ -362,22 +363,34 @@ Keine neuen Pakete. Die App hat bereits alles Nötige (Next.js, Supabase-Client,
 
 #### BUG-2: „Größte Blockaden" zeigt den Fach-Namen nicht an
 - **Severity:** Medium
+- **Status:** ✅ Fixed and re-verified (2026-09-12) — siehe Re-Test unten
 - **Steps to Reproduce:**
   1. `/kompetenzanalyse` öffnen mit Themen aus mehreren Fächern in der Blockaden-Liste
   2. Erwartet (AC): Zeile zeigt Thema, **Fach**, Blockade-Text und Stufen-Badge
   3. Tatsächlich: Nur Thema-Name und Blockade-Text werden gezeigt, kein Fach — bei gleichnamigen Themen unterschiedlicher Fächer nicht mehr unterscheidbar, ohne draufzuklicken
 - **Priority:** Fix before deployment (klein, aber explizit in der Spec gefordert)
 
+### Re-Test nach Bugfix (2026-09-12)
+
+Bugfix-Commit: `fix(PROJ-8): Render Klausurreife-Trend and Fach name in Größte Blockaden` (siehe Frontend Implementation Notes, Nachtrag).
+
+- **BUG-1:** `npx vitest run` 272/272 grün (6 neue, gezielte Tests für die aus der Komponente in `src/lib/kompetenzanalyse.ts` verschobene und exportierte `formatTrend()`-Funktion: `null` → „–"/grau, > +2 Prozentpunkte → grüner Pfeil, < −2 Prozentpunkte → roter Pfeil, innerhalb ±2 Prozentpunkte inkl. Grenzwerte → neutraler Pfeil/grau, 0 → neutral ohne Vorzeichen). Live erneut gegen das echte Supabase-Projekt bestätigt: Abgabenordnung (1 Klausur) zeigt jetzt „1 Kl. · 0 % best. · –" — die vierte Spalte ist vorhanden und zeigt korrekt „–" bei < 6 Klausuren.
+- **BUG-2:** Live erneut bestätigt: „Größte Blockaden" zeigt jetzt „Abgabenordnung · Stufe 1 blockiert: …" bzw. „Einkommensteuer · Stufe 4 blockiert: …" — Fach-Name vorhanden.
+- Beide Re-Tests unabhängig von der Frontend-Selbstverifikation durchgeführt (frischer Dev-Server-Neustart, neuer Login, neue Screenshots), keine Regressionen gefunden.
+- `npx playwright test`: weiterhin 30/30 grün.
+- `npm run build`: weiterhin fehlerfrei.
+- Keine neuen Bugs bei der Re-Verifikation gefunden.
+
 ### Beobachtungen (kein Bug)
-- **Einmaliger transienter Verbindungsfehler:** Beim allerersten Seitenaufruf nach einem frischen Serverstart (kurz nach einem Systemneustart) erschien einmalig „Verbindung fehlgeschlagen"; 3 sofortige Wiederholungen liefen fehlerfrei. Nicht reproduzierbar, vermutlich Kaltstart-Latenz der ersten Server→Supabase-Verbindung. Das zugrunde liegende `Promise.all`-über-10-Tabellen-Muster ist identisch zu PROJ-7 (deployed, ohne bekannte Probleme).
+- **Transienter Verbindungsfehler beim kalten Dev-Server-Start:** Über die gesamte QA-Session hinweg trat „Verbindung fehlgeschlagen" **ausschließlich** beim jeweils allerersten Seitenaufruf direkt nach einem frischen `npm run dev`-Start auf (4 von 4 Beobachtungen, u.a. auch beim Re-Test), nie bei einem der vielen folgenden Aufrufe im selben Serverlauf. Konsistent mit Kaltstart-Latenz der ersten Server→Supabase-Verbindung in Next.js Dev-Mode (Turbopack kompiliert zusätzlich on-demand). Das zugrunde liegende `Promise.all`-über-10-Tabellen-Muster ist identisch zu PROJ-7 (deployed, ohne bekannte Probleme) und dürfte in Produktion (vorkompilierter Build, andere Connection-Pooling-Charakteristik) nicht in dieser Form auftreten — für `/deploy` ggf. im Hinterkopf behalten, aber kein Blocker für PROJ-8 selbst.
 - Im Rahmen dieser Session wurden erneut alte, nicht bereinigte QA-Testfixtures im Test-Account bemerkt (Themen aus früheren QA-Durchläufen) — kein PROJ-8-Bug, lediglich zur Kenntnis: der Test-Account sollte bei Gelegenheit bereinigt oder klar als dauerhafter Fixture-Pool dokumentiert werden.
 
 ### Summary
-- **Acceptance Criteria:** 29/32 passed (3 durch BUG-1/BUG-2 verletzt)
-- **Bugs Found:** 2 total (0 critical, 1 high, 1 medium, 0 low)
+- **Acceptance Criteria:** 32/32 passed (nach Re-Test; ursprünglich 29/32, BUG-1/BUG-2 seither behoben und re-verifiziert)
+- **Bugs Found:** 2 total (0 critical, 1 high, 1 medium, 0 low) — **beide behoben und re-verifiziert**, 0 offen
 - **Security:** Pass — keine Schwachstellen gefunden (XSS getestet und sicher, RLS korrekt konfiguriert, keine clientseitige Angriffsfläche); Autorisierungstest zwischen zwei echten Accounts konnte mangels zweitem Account nicht live durchgeführt werden (Code-Review-Grundlage: identisches auditiertes Muster)
-- **Production Ready:** NO
-- **Recommendation:** BUG-1 und BUG-2 vor Deployment beheben (beide sind reine Frontend-Anzeige-Lücken, keine Berechnungsfehler — die zugrunde liegenden Daten sind bereits korrekt vorhanden und unit-getestet). Danach erneuten `/qa`-Durchlauf zur Re-Verifikation der beiden Fixes.
+- **Production Ready:** YES
+- **Recommendation:** Deploy. Offene, nicht blockierende Punkte für später: Autorisierungstest mit einem zweiten echten Account nachholen, sobald verfügbar; Test-Account-Altdaten bei Gelegenheit aufräumen oder als dauerhaften Fixture-Pool dokumentieren.
 
 ## Deployment
 _To be added by /deploy_

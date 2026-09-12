@@ -536,5 +536,23 @@ export function formatDatum(iso: string): string {
   return `${tag}.${monat}.${jahr}`;
 }
 
+export interface TrendAnzeige {
+  text: string;
+  farbe: AmpelFarbe;
+}
+
+/**
+ * Trend-Text + Farbe für die Klausurreife-Card. `null` (< 6 Klausuren) -> „–".
+ * ±2-Prozentpunkte-Schwelle für die Pfeilrichtung, analog Prototyp.
+ */
+export function formatTrend(trend: number | null): TrendAnzeige {
+  if (trend === null) return { text: "–", farbe: "grey" };
+  const prozentpunkte = Math.round(trend * 100);
+  const vorzeichen = prozentpunkte > 0 ? "+" : "";
+  if (trend > 0.02) return { text: `▲ ${vorzeichen}${prozentpunkte} %`, farbe: "green" };
+  if (trend < -0.02) return { text: `▼ ${prozentpunkte} %`, farbe: "red" };
+  return { text: `→ ${vorzeichen}${prozentpunkte} %`, farbe: "grey" };
+}
+
 /** Einheitliche Meldung für fehlgeschlagene Server-Kommunikation (analog PROJ-3–5/7). */
 export const CONNECTION_ERROR = "Verbindung fehlgeschlagen, bitte später erneut versuchen";

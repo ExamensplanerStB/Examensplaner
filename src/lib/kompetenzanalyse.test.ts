@@ -11,6 +11,7 @@ import {
   fachVerteilungVon,
   fehlermusterVon,
   fehlernotizenVon,
+  formatTrend,
   groesseBlockaden,
   klausurreifeVon,
   priowertVon,
@@ -394,5 +395,33 @@ describe("saeulenVon", () => {
     const ts = themaStufeVon(THEMA, quellen, HEUTE);
     const theorieSaeule = saeulenVon(ts, HEUTE).find((s) => s.key === "theorie");
     expect(theorieSaeule?.status).toBe("gueltig");
+  });
+});
+
+describe("formatTrend", () => {
+  it("null (< 6 Klausuren) -> Gedankenstrich, graue Farbe", () => {
+    expect(formatTrend(null)).toEqual({ text: "–", farbe: "grey" });
+  });
+
+  it("Verbesserung > 2 Prozentpunkte -> grüner Pfeil nach oben mit Vorzeichen", () => {
+    expect(formatTrend(0.05)).toEqual({ text: "▲ +5 %", farbe: "green" });
+  });
+
+  it("Verschlechterung < -2 Prozentpunkte -> roter Pfeil nach unten", () => {
+    expect(formatTrend(-0.08)).toEqual({ text: "▼ -8 %", farbe: "red" });
+  });
+
+  it("Änderung innerhalb ±2 Prozentpunkte -> neutraler Pfeil, graue Farbe", () => {
+    expect(formatTrend(0.01)).toEqual({ text: "→ +1 %", farbe: "grey" });
+    expect(formatTrend(-0.01)).toEqual({ text: "→ -1 %", farbe: "grey" });
+  });
+
+  it("exakt an der ±2-Prozentpunkte-Schwelle zählt noch als neutral", () => {
+    expect(formatTrend(0.02)).toEqual({ text: "→ +2 %", farbe: "grey" });
+    expect(formatTrend(-0.02)).toEqual({ text: "→ -2 %", farbe: "grey" });
+  });
+
+  it("Trend exakt 0 -> neutraler Pfeil ohne Vorzeichen", () => {
+    expect(formatTrend(0)).toEqual({ text: "→ 0 %", farbe: "grey" });
   });
 });

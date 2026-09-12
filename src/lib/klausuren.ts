@@ -1,4 +1,4 @@
-import { PARAMETER, heuteISO, istBestanden, nachschreibenFaellig } from "./klausuren-berechnung";
+import { PARAMETER, heuteISO, istBestanden, istTeilGueltig, nachschreibenFaellig } from "./klausuren-berechnung";
 
 export interface KlausurTeil {
   id: string;
@@ -87,6 +87,20 @@ export function zeigeNachschreibenHinweis(
   heute: string = heuteISO()
 ): boolean {
   return nachschreibenFaellig(klausur.datum, klausur.nachschreibenErledigt, heute);
+}
+
+/**
+ * Gültigkeit eines einzelnen Teils als Stufe-4-Beleg (Abschnitt 4 der
+ * Berechnungsspezifikation, für PROJ-8/Kompetenzanalyse) — ein unvollständiger
+ * Teil (Korrektur ausstehend) ist nie gültig.
+ */
+export function istTeilGueltigVon(
+  teil: KlausurTeil,
+  klausurDatumISO: string,
+  heute: string = heuteISO()
+): boolean {
+  if (teil.maxPunkte === null || teil.erreichtePunkte === null) return false;
+  return istTeilGueltig(teil.erreichtePunkte, teil.maxPunkte, klausurDatumISO, heute);
 }
 
 export { PARAMETER };

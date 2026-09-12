@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { istBestanden, nachschreibenFaellig } from "./klausuren-berechnung";
+import { istBestanden, istTeilGueltig, nachschreibenFaellig } from "./klausuren-berechnung";
 
 describe("nachschreibenFaellig", () => {
   const heute = "2026-09-09";
@@ -34,5 +34,30 @@ describe("istBestanden", () => {
 
   it("max_punkte 0 -> nie bestanden (Division durch 0 vermieden)", () => {
     expect(istBestanden(0, 0)).toBe(false);
+  });
+});
+
+describe("istTeilGueltig", () => {
+  const heute = "2026-09-09";
+
+  it("Quote >= BESTEHEN_SICHER (55%) und innerhalb 180 Tagen -> gültig", () => {
+    expect(istTeilGueltig(55, 100, "2026-08-01", heute)).toBe(true);
+  });
+
+  it("Quote < BESTEHEN_SICHER, aber >= BESTEHEN_QUOTE -> nicht gültig als Stufe-4-Beleg", () => {
+    expect(istTeilGueltig(45, 100, "2026-08-01", heute)).toBe(false);
+  });
+
+  it("Quote ausreichend, aber älter als KLAUSUR_HALTBARKEIT (180 Tage) -> nicht mehr gültig", () => {
+    expect(istTeilGueltig(80, 100, "2026-01-01", heute)).toBe(false);
+  });
+
+  it("genau 180 Tage alt -> noch gültig (Grenzfall)", () => {
+    // 2026-03-13 + 180 Tage = 2026-09-09
+    expect(istTeilGueltig(80, 100, "2026-03-13", heute)).toBe(true);
+  });
+
+  it("max_punkte 0 -> nie gültig (Division durch 0 vermieden)", () => {
+    expect(istTeilGueltig(0, 0, "2026-08-01", heute)).toBe(false);
   });
 });

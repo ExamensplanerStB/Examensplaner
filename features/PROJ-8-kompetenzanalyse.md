@@ -1,6 +1,6 @@
 # PROJ-8: Kompetenzanalyse
 
-## Status: Architected
+## Status: In Progress
 **Created:** 2026-09-11
 **Last Updated:** 2026-09-12
 
@@ -202,6 +202,36 @@ Reine Historie für die spätere Kalibrierung (Prädiktive Validität) und einen
 ### D) Abhängigkeiten (zu installierende Pakete)
 
 Keine neuen Pakete. Die App hat bereits alles Nötige (Next.js, Supabase-Client, shadcn/ui, Vitest). Es kommt lediglich eine neue Datenbank-Tabelle (`stufen_verlauf`) sowie neue reine Berechnungsdateien hinzu — keine neue Bibliothek.
+
+## Frontend Implementation Notes (Frontend Developer)
+
+**Umgesetzt (2026-09-12):**
+- `src/lib/kompetenzanalyse.ts`: reine Berechnungsfunktionen nach Berechnungsspezifikation Abschnitt 5 + 8 — `themaStufeVon` (Stufe 0–4 inkl. Subsumtionsregel + `basisBroeckelt`-Flag), `blockadeVon`/`blockadeKurztext`, `priowertVon`, `sortierteThemenNachPrio`/`groesseBlockaden`, `fachVerteilungVon`, `klausurreifeVon`, `saeulenVon` (Vier-Säulen-Status für Ebene 3), `fehlernotizenVon`, `fehlermusterVon` (Keyword-Matching), `empfehlungenVon`. Ruft ausschließlich die bereits bestehenden Gültigkeitsfunktionen aus `karteikarten-intervall.ts`/`uebungsaufgaben-wiederholung.ts`/`klausuren-berechnung.ts` auf (Tech-Design-Vorgabe), keine eigene Gültigkeitslogik pro Beleg.
+- `src/lib/klausuren-berechnung.ts` + `src/lib/klausuren.ts`: ergänzt um `BESTEHEN_SICHER` (0,55), `KLAUSUR_HALTBARKEIT` (180 Tage) und `istTeilGueltig`/`istTeilGueltigVon` (Gültigkeitsprüfung eines einzelnen Klausurteils als Stufe-4-Beleg) — wie im Tech Design vorgesehen, keine Kopie in einer neuen Datei.
+- `src/lib/kalibrierung.ts`: `anzahlKlausurenMitTeilen`/`kalibrierungBereit` (10er-Schwelle), `praediktiveValiditaetVon` (Matrix Stufe × Ergebnis, Abschnitt 9A), `selbstbewertungsBiasVon`/`durchschnittsBiasVon` (Abschnitt 9B). `StufenSnapshot`-Typ bereits vollständig definiert, obwohl die zugehörige Tabelle noch nicht existiert (siehe unten).
+- UI: `src/components/kompetenzanalyse/` — `stufen-ui.tsx` (AmpelDot, StufenBalken, StufenSegmente, StufenLegende, Ampel-Farbmapping), `faecher-uebersicht.tsx` (Ebene 1: Fächer-Sidebar gruppiert nach Klausurtag, Stufenverteilung, Klausurreife, Größte Blockaden), `themen-liste.tsx` (Ebene 2), `thema-detail.tsx` (Ebene 3: Stufen-Segmente, Blockade-/Basis-bröckelt-Hinweis, Vier-Säulen-Status, Handlungsempfehlung, Fehlernotizen), `kalibrierungs-card.tsx`, `kompetenzanalyse-manager.tsx` (Client-Komponente, hält Ebene-1/2/3-Navigation als lokalen State, berechnet alle abgeleiteten Daten per `useMemo`).
+- `src/app/kompetenzanalyse/page.tsx`: async Server Component, lädt live aus den bereits produktiven PROJ-2/3/4/5-Tabellen (`faecher`, `themen`, `karteikarten`(+`_themen`), `uebungsaufgaben`(+`_themen`,`_reviews`), `klausuren`, `klausur_teile`(+`_themen`)) — identisches Lade-/Fehlerbehandlungsmuster wie `wiederholungsplan/page.tsx` (PROJ-7).
+- `tests/PROJ-8-kompetenzanalyse.spec.ts`: committeter Playwright-Test für den nicht eingeloggten Redirect (analog PROJ-1/2/3/6/7 — bewusst ohne echte Zugangsdaten im Repo).
+
+**Bewusst noch nicht umgesetzt (folgt in `/backend`):**
+- `stufen_verlauf` existiert als Tabelle noch nicht (keine Migration, keine RLS) — `page.tsx` übergibt daher eine bewusst leere Platzhalter-Konstante `initialSnapshots: StufenSnapshot[] = []` an den Manager, analog zu PROJ-3s leerer `initialKarten`-Konstante vor dessen Backend-Anbindung. Die Snapshot-Schreib-Server-Aktion (täglicher Upsert beim Seitenaufruf, siehe Tech Design) ist ebenfalls noch nicht angebunden.
+- Auswirkung: Die Prädiktive-Validität-Auswertung (Abschnitt 9A) kann strukturell korrekt aufgerufen werden, findet aber mangels echter Snapshots aktuell nie eine Übereinstimmung — die Kalibrierungs-Card zeigt bis zur Backend-Anbindung ohnehin die „Noch nicht genug Daten"-Ansicht (0 von 10 Klausuren beim Nutzer), sodass dies aktuell nicht sichtbar ist.
+- „Verbindung fehlgeschlagen"-AC (Fehler & Sicherheit) ist bereits mit den bestehenden Tabellen testbar; die RLS-Verweigerung speziell für `stufen_verlauf` erst mit der neuen Tabelle.
+
+**Bewusste Implementierungsentscheidungen (Präzisierungen gegenüber der Spec):**
+- **Priowert-Formel folgt dem Berechnungsspezifikations-Text, nicht dem Prototyp-Code:** Der Bonus „+2 wenn Stufe-3-Beleg in ≤ 7 Tagen abläuft" bezieht sich auf den Übungsaufgaben-Beleg (56-Tage-Haltbarkeit), wie im Text von Abschnitt 8 wörtlich beschrieben. Der HTML-Prototyp prüfte an dieser Stelle stattdessen den Klausurteil (Stufe-4-Beleg, 180-Tage-Haltbarkeit) — eine Abweichung zwischen Text und Prototyp-Code. Da die Berechnungsspezifikation laut Decision Log projektweit als maßgeblich gilt (siehe PROJ-5 `BESTEHEN_QUOTE`-Korrektur), folgt die Implementierung dem geschriebenen Text.
+- **Klausurreife ist Fach-skaliert:** Bei einer Klausur mit Teilen mehrerer Fächer zählen für die Klausurreife eines Fachs nur dessen eigene Teile (Summe erreichte/max. Punkte dieser Teile), nicht die Gesamtquote der ganzen Klausur. Die Berechnungsspezifikation setzt noch das einfachere Ein-Fach-pro-Klausur-Modell voraus; PROJ-5 hat bereits die flexiblere Teile-Struktur eingeführt. Fach-Skalierung ist die einzige Lesart, die eine kombinierte Klausur nicht künstlich verzerrt.
+- **Selbstbewertungs-Bias-Skalierung:** Um den `worst`-Wert (1–5) mit der Klausurteil-Quote (0–100 %) vergleichbar zu machen, wird die Quote linear auf dieselbe 1–5-Skala projiziert (`Quote × 5`). Die Berechnungsspezifikation legt keine exakte Umrechnung fest — dies ist eine bewusste, dokumentierte Annahme (`teilQuoteAlsSkala` in `kalibrierung.ts`).
+- **„Anzahl geschriebener Klausuren" vs. „Anteil bestanden":** Erstere zählt alle Klausuren mit mindestens einem Teil dieses Fachs, auch unkorrigierte („Korrektur ausstehend"). Letztere bezieht sich nur auf bereits korrigierte Teile — eine unkorrigierte Klausur kann noch nicht als bestanden/nicht bestanden gelten.
+
+**Gefundenes Datenproblem (kein Code-Bug):** Beim manuellen Verifizieren durch den Nutzer erschienen in „Größte Blockaden" mehrere Themen mit Namen wie `QA-Thema-A-<Timestamp>` — Testfixtures aus einer früheren QA-Session, die nie aus der Live-`themen`-Tabelle entfernt wurden. Kompetenzanalyse zeigte diese korrekt an (sie sind echte, wenn auch unbeabsichtigte Zeilen im Themenkatalog). Vom Nutzer selbst über die bestehende Löschfunktion in `/themen` (PROJ-2) bereinigt; danach bestätigt.
+
+**Getestet:**
+- **Unit-Tests (Vitest):** 261/261 grün — davon neu: 31 Tests `kompetenzanalyse.test.ts` (Stufenlogik inkl. Subsumtion und Basis-bröckelt, Blockade, Priowert, Fach-Verteilung, Klausurreife, Fehlernotizen-Aggregation inkl. Klausur→alle-Teile-Themen-Zuordnung, Fehlermuster, Empfehlungen, Säulen-Status), 11 Tests `kalibrierung.test.ts`, 5 neue Tests `klausuren-berechnung.test.ts` (`istTeilGueltig`).
+- **`npm run build`:** fehlerfrei (TypeScript + Next.js Turbopack), `/kompetenzanalyse` erscheint korrekt als dynamische Route.
+- **`npx playwright test`:** 30/30 grün (inkl. der 4 neuen PROJ-8-Redirect-Assertions über beide Browser-Projekte).
+- **Live im Browser verifiziert (vom Nutzer, mit seinem echten Account gegen das echte Supabase-Projekt, da keine Zugangsdaten in dieser Session vorlagen):** Ebene 1 lädt mit korrekten „keine Daten"-Zuständen (graue Ampeln) bei leerer Lerndatenbank, Drilldown Ebene 1 → Fach (Ebene 2) → Thema (Ebene 3) funktioniert, Breadcrumb-Navigation zurück funktioniert. Bestätigt „passt nun" nach Bereinigung der oben genannten QA-Testfixtures.
+- **Nicht in dieser Session verifiziert (siehe Bewusst noch nicht umgesetzt):** RLS-Verweigerung für `stufen_verlauf`, Verbindungsfehler-Anzeige mit echtem Netzwerkausfall, Kalibrierung mit ≥ 10 echten Klausuren (Nutzer hat aktuell 0), Responsive-Verhalten auf Tablet/Mobile-Breiten — sollte in `/qa` nachgeholt werden.
 
 ## QA Test Results
 _To be added by /qa_
